@@ -1,394 +1,98 @@
 {
-    "general": {
-      "description": "通用配置",
-      "type": "object",
-      "hint": "配置 PaperOS / Paper RAG 插件使用的 AstrBot 模型 Provider。这里保存的是 AstrBot WebUI 中已配置 Provider 的 ID。",
-      "items": {
-        "default_provider_id": {
-          "description": "通用 API Provider",
-          "type": "string",
-          "default": "",
-          "_special": "select_provider",
-          "hint": "用于普通搜索、元数据整理、标题纠错、摘要整理等轻量任务。"
-        },
-        "thinking_provider_id": {
-          "description": "思考 API Provider",
-          "type": "string",
-          "default": "",
-          "_special": "select_provider",
-          "hint": "用于论文理解、复杂筛选、话题拆解、长上下文推理等重任务。"
-        }
+  "general": {
+    "type": "object",
+    "description": "通用配置",
+    "items": {
+      "default_provider_id": {
+        "type": "string",
+        "description": "通用模型 Provider",
+        "hint": "用于普通摘要、整理、问答。留空则使用当前会话默认 Provider。",
+        "default": "",
+        "_special": "select_provider"
+      },
+      "thinking_provider_id": {
+        "type": "string",
+        "description": "思考模型 Provider",
+        "hint": "用于论文理解、方法分析、规划等较重任务。留空则回退到通用模型 Provider。",
+        "default": "",
+        "_special": "select_provider"
+      },
+      "debug": {
+        "type": "bool",
+        "description": "启用调试日志",
+        "default": false
       }
-    },
-    "search": {
-      "description": "论文搜索配置",
-      "type": "object",
-      "hint": "配置论文检索源、失败回退、候选筛选和话题扩展策略。",
-      "items": {
-        "enabled": {
-          "description": "启用论文搜索",
-          "type": "bool",
-          "default": true
-        },
-        "route_mode": {
-          "description": "检索调度模式",
-          "type": "string",
-          "default": "intent_router",
-          "options": [
-            "intent_router",
-            "fixed_order"
-          ],
-          "hint": "intent_router：根据链接、精确标题、模糊标题、话题自动选择检索流程；fixed_order：只按 source_order_text 顺序查询。"
-        },
-        "source_order_text": {
-          "description": "默认搜索顺序",
-          "type": "text",
-          "default": "openalex\nsemantic_scholar\ncrossref\narxiv\ncore",
-          "hint": "每行一个搜索源 ID。"
-        },
-        "source": {
-            "description": "搜索 API 列表",
-            "type": "template_list",
-            "hint": "可以添加多个搜索源。每个条目的 provider_id 需要与 search_order 中的名字一致。",
-            "templates": {
-                "openalex": {
-                    "name": "OpenAlex",
-                    "hint": "综合型开放学术索引，适合作为默认第一搜索源；不需要 API Key，建议填写 mailto 以便礼貌访问。",
-                    "items": {
-                    "provider_id": {
-                        "description": "搜索源 ID",
-                        "type": "string",
-                        "default": "openalex"
-                    },
-                    "enabled": {
-                        "description": "启用 OpenAlex",
-                        "type": "bool",
-                        "default": true
-                    },
-                    "base_url": {
-                        "description": "API 地址",
-                        "type": "string",
-                        "default": "https://api.openalex.org/works"
-                    },
-                    "mailto": {
-                        "description": "联系邮箱",
-                        "type": "string",
-                        "default": "",
-                        "hint": "可追加为 mailto 参数，便于 API 服务方联系；不是鉴权 Key。"
-                    },
-                    "per_page": {
-                        "description": "单次返回数量",
-                        "type": "int",
-                        "default": 10
-                    },
-                    "sort": {
-                        "description": "排序方式",
-                        "type": "string",
-                        "default": "relevance_score:desc"
-                    },
-                    "filters": {
-                        "description": "额外过滤条件",
-                        "type": "dict",
-                        "items": {},
-                        "default": {},
-                        "hint": "例如 {\"from_publication_date\":\"2020-01-01\", \"type\":\"article\"}。具体字段由插件代码转换为 OpenAlex filter 参数。"
-                    }
-                    }
-                },
-                "semantic_scholar": {
-                    "name": "Semantic Scholar",
-                    "hint": "适合获取论文、作者、引用、开放 PDF、S2 相关字段；API Key 可选但建议配置。",
-                    "items": {
-                    "provider_id": {
-                        "description": "搜索源 ID",
-                        "type": "string",
-                        "default": "semantic_scholar"
-                    },
-                    "enabled": {
-                        "description": "启用 Semantic Scholar",
-                        "type": "bool",
-                        "default": true
-                    },
-                    "base_url": {
-                        "description": "API 地址",
-                        "type": "string",
-                        "default": "https://api.semanticscholar.org/graph/v1/paper/search"
-                    },
-                    "api_key": {
-                        "description": "API Key",
-                        "type": "string",
-                        "default": "",
-                        "hint": "也可以留空，并在代码中优先读取 api_key_env 指向的环境变量。"
-                    },
-                    "api_key_env": {
-                        "description": "API Key 环境变量名",
-                        "type": "string",
-                        "default": "SEMANTIC_SCHOLAR_API_KEY"
-                    },
-                    "limit": {
-                        "description": "单次返回数量",
-                        "type": "int",
-                        "default": 10
-                    },
-                    "fields": {
-                        "description": "返回字段",
-                        "type": "list",
-                        "default": [
-                        "paperId",
-                        "externalIds",
-                        "title",
-                        "abstract",
-                        "authors",
-                        "year",
-                        "venue",
-                        "citationCount",
-                        "influentialCitationCount",
-                        "openAccessPdf",
-                        "url"
-                        ],
-                        "editor_mode": true,
-                        "editor_language": "json"
-                    }
-                    }
-                },
-                "crossref": {
-                    "name": "Crossref",
-                    "hint": "适合 DOI 与出版元数据补全，覆盖期刊、会议、书籍等；不需要注册即可使用。",
-                    "items": {
-                    "provider_id": {
-                        "description": "搜索源 ID",
-                        "type": "string",
-                        "default": "crossref"
-                    },
-                    "enabled": {
-                        "description": "启用 Crossref",
-                        "type": "bool",
-                        "default": true
-                    },
-                    "base_url": {
-                        "description": "API 地址",
-                        "type": "string",
-                        "default": "https://api.crossref.org/works"
-                    },
-                    "mailto": {
-                        "description": "礼貌池邮箱",
-                        "type": "string",
-                        "default": "",
-                        "hint": "建议填写，插件代码可将其作为 mailto 参数。"
-                    },
-                    "rows": {
-                        "description": "单次返回数量",
-                        "type": "int",
-                        "default": 10
-                    },
-                    "query_field": {
-                        "description": "查询字段",
-                        "type": "string",
-                        "default": "query.bibliographic",
-                        "options": [
-                        "query",
-                        "query.bibliographic",
-                        "query.title",
-                        "query.author"
-                        ]
-                    },
-                    "filters": {
-                        "description": "额外过滤条件",
-                        "type": "dict",
-                        "items": {},
-                        "default": {},
-                        "hint": "例如 {\"from-pub-date\":\"2020-01-01\", \"type\":\"journal-article\"}。具体格式由插件代码转换为 Crossref filter。"
-                    }
-                    }
-                },
-                "arxiv": {
-                    "name": "arXiv",
-                    "hint": "适合检索预印本，尤其是 cs/math/physics 等领域；返回 Atom Feed，需要插件代码解析。",
-                    "items": {
-                    "provider_id": {
-                        "description": "搜索源 ID",
-                        "type": "string",
-                        "default": "arxiv"
-                    },
-                    "enabled": {
-                        "description": "启用 arXiv",
-                        "type": "bool",
-                        "default": true
-                    },
-                    "base_url": {
-                        "description": "API 地址",
-                        "type": "string",
-                        "default": "https://export.arxiv.org/api/query"
-                    },
-                    "max_results": {
-                        "description": "单次返回数量",
-                        "type": "int",
-                        "default": 10
-                    },
-                    "sort_by": {
-                        "description": "排序字段",
-                        "type": "string",
-                        "default": "relevance",
-                        "options": [
-                        "relevance",
-                        "lastUpdatedDate",
-                        "submittedDate"
-                        ]
-                    },
-                    "sort_order": {
-                        "description": "排序方向",
-                        "type": "string",
-                        "default": "descending",
-                        "options": [
-                        "ascending",
-                        "descending"
-                        ]
-                    },
-                    "category_filter": {
-                        "description": "类别过滤",
-                        "type": "string",
-                        "default": "",
-                        "hint": "例如 cs.CV、cs.LG、math.DG；留空表示不过滤。"
-                    },
-                    "request_interval_sec": {
-                        "description": "请求间隔（秒）",
-                        "type": "float",
-                        "default": 3.0,
-                        "hint": "arXiv 官方示例建议分页调用时等待约 3 秒。"
-                    }
-                    }
-                },
-                "core": {
-                    "name": "CORE",
-                    "hint": "适合开放获取论文与全文检索；通常需要注册 API Key。",
-                    "items": {
-                    "provider_id": {
-                        "description": "搜索源 ID",
-                        "type": "string",
-                        "default": "core"
-                    },
-                    "enabled": {
-                        "description": "启用 CORE",
-                        "type": "bool",
-                        "default": false
-                    },
-                    "base_url": {
-                        "description": "API 地址",
-                        "type": "string",
-                        "default": "https://api.core.ac.uk/v3/search/works"
-                    },
-                    "api_key": {
-                        "description": "API Key",
-                        "type": "string",
-                        "default": "",
-                        "hint": "也可以留空，并在代码中优先读取 api_key_env 指向的环境变量。"
-                    },
-                    "api_key_env": {
-                        "description": "API Key 环境变量名",
-                        "type": "string",
-                        "default": "CORE_API_KEY"
-                    },
-                    "limit": {
-                        "description": "单次返回数量",
-                        "type": "int",
-                        "default": 10
-                    },
-                    "prefer_fulltext": {
-                        "description": "优先全文可用结果",
-                        "type": "bool",
-                        "default": true
-                    }
-                    }
-                },
-                "unpaywall": {
-                    "name": "Unpaywall",
-                    "hint": "主要用于根据标题/DOI 查找开放获取状态和 PDF 链接，更适合作为元数据/全文链接补全源。",
-                    "items": {
-                    "provider_id": {
-                        "description": "搜索源 ID",
-                        "type": "string",
-                        "default": "unpaywall"
-                    },
-                    "enabled": {
-                        "description": "启用 Unpaywall",
-                        "type": "bool",
-                        "default": false
-                    },
-                    "base_url": {
-                        "description": "标题搜索 API 地址",
-                        "type": "string",
-                        "default": "https://api.unpaywall.org/v2/search"
-                    },
-                    "email": {
-                        "description": "联系邮箱",
-                        "type": "string",
-                        "default": "",
-                        "hint": "Unpaywall API 通常需要 email 参数。"
-                    },
-                    "is_oa": {
-                        "description": "只返回开放获取结果",
-                        "type": "bool",
-                        "default": false
-                    },
-                    "use_as_enricher": {
-                        "description": "作为补全源使用",
-                        "type": "bool",
-                        "default": true,
-                        "hint": "建议在拿到 DOI 或标题后，用 Unpaywall 补全 oa_status、url_for_pdf 等字段。"
-                    }
-                    }
-                },
-                "opencitations": {
-                    "name": "OpenCitations",
-                    "hint": "主要用于 DOI 的引用/被引关系查询，不适合作为全文搜索第一入口；可作为图关系补全源。",
-                    "items": {
-                    "provider_id": {
-                        "description": "搜索源 ID",
-                        "type": "string",
-                        "default": "opencitations"
-                    },
-                    "enabled": {
-                        "description": "启用 OpenCitations",
-                        "type": "bool",
-                        "default": false
-                    },
-                    "base_url": {
-                        "description": "API 地址",
-                        "type": "string",
-                        "default": "https://api.opencitations.net/index/v2"
-                    },
-                    "access_token": {
-                        "description": "Access Token",
-                        "type": "string",
-                        "default": "",
-                        "hint": "可选。也可以留空，并在代码中优先读取 access_token_env 指向的环境变量。"
-                    },
-                    "access_token_env": {
-                        "description": "Access Token 环境变量名",
-                        "type": "string",
-                        "default": "OPENCITATIONS_ACCESS_TOKEN"
-                    },
-                    "mode": {
-                        "description": "查询模式",
-                        "type": "string",
-                        "default": "citations",
-                        "options": [
-                        "citations",
-                        "references"
-                        ],
-                        "hint": "citations 查询谁引用了该论文；references 查询该论文引用了谁。"
-                    }
-                    }
-                }
-            }
-        },
-        "custom_sources_json": {
-          "description": "自定义搜索源 JSON",
-          "type": "text",
-          "default": "[]",
-          "hint": "高级用法。填写数组，例如 [{\"id\":\"my_api\",\"enabled\":true,\"base_url\":\"https://...\",\"kind\":\"search\"}]。插件代码需自行适配。"
-        }
+    }
+  },
+  "core_api": {
+    "type": "object",
+    "description": "CORE API 配置",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "启用 CORE 搜索",
+        "default": true
+      },
+      "api_key": {
+        "type": "string",
+        "description": "CORE API Key",
+        "hint": "建议填写。没有 key 时只能做非常有限的公开元数据查询。",
+        "default": "",
+        "obscure": true
+      },
+      "base_url": {
+        "type": "string",
+        "description": "CORE API Base URL",
+        "default": "https://api.core.ac.uk/v3"
+      },
+      "timeout_seconds": {
+        "type": "int",
+        "description": "请求超时时间，秒",
+        "default": 25
+      },
+      "default_limit": {
+        "type": "int",
+        "description": "默认候选数量",
+        "default": 10
+      },
+      "topic_candidate_limit": {
+        "type": "int",
+        "description": "话题发现候选数量",
+        "default": 20
+      },
+      "sort": {
+        "type": "string",
+        "description": "CORE 排序方式",
+        "default": "relevance",
+        "options": ["relevance", "recency"]
+      }
+    }
+  },
+  "search_policy": {
+    "type": "object",
+    "description": "论文搜索策略",
+    "items": {
+      "accept_min_score": {
+        "type": "float",
+        "description": "自动接受 top1 的最低分数",
+        "default": 0.78
+      },
+      "ambiguous_gap_threshold": {
+        "type": "float",
+        "description": "top1 与 top2 分差低于该值时认为有歧义",
+        "default": 0.08
+      },
+      "max_return_candidates": {
+        "type": "int",
+        "description": "有歧义时最多返回候选数量",
+        "default": 5
+      },
+      "enable_query_rewrite": {
+        "type": "bool",
+        "description": "启用简单查询改写",
+        "hint": "当前版本只做规则改写；后续可以接入通用/思考模型。",
+        "default": true
       }
     }
   }
-  
+}
