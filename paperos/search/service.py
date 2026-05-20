@@ -1,67 +1,57 @@
 from __future__ import annotations
 
-from astrbot.api import logger
+from typing import Any
 
 from ..config import PaperOSConfig
-from .core_client import CoreAPIError, CoreClient
-from .core_query import build_core_queries
-from .models import PaperCandidate, PaperSearchResult, QueryKind
-from .query_router import classify_query
-from .ranker import rank_candidates
+from .acquire.fulltext_resolver import FulltextResolver
+from .acquire.verifier import FulltextVerifier
+from .pipeline import PaperSearchPipeline
+from .providers.core.client import CoreClient
+from .providers.core.fulltext_provider import CoreFulltextProvider
+from .providers.core.metadata_provider import CoreMetadataProvider
+from .query.analyzer import AstrBotLLMQueryAnalyzer
+from .resolve.candidate_resolver import CandidateResolver
+from .resolve.dedup import PaperDeduplicator
+from .resolve.disambiguator import PaperDisambiguator
 
 
 class PaperSearchService:
-    """Reusable search service used by commands, LLM tools, RAG, and future ingestion.
+    """Public entry point for PaperOS search.
 
-    Later you can inject LocalPaperRepository here and run local-first search before
-    calling external APIs. The AstrBot plugin does not need to change.
+    RAG / reasoning / user commands should call this service instead of calling
+    provider clients directly.
     """
 
-    def __init__(self, cfg: PaperOSConfig):
+    def __init__(self, cfg: PaperOSConfig, astrbot_context: Any):
         self.cfg = cfg
-        self.core = CoreClient(cfg.core_api)
+        self.core_client = CoreClient(cfg.core_api)
+        self.query_analyzer = AstrBotLLMQueryAnalyzer(context=astrbot_context, cfg=cfg)
+        self.metadata_resolver = CandidateResolver(
+            providers=[
+                CoreMetadataProvider(self.core_client),
+            ]
+        )
+        self.fulltext_resolver = FulltextResolver(
+            providers=[
+                CoreFulltextProvider(self.core_client),
+            ]
+        )
+        self.pipeline = PaperSearchPipeline(
+            query_analyzer=self.query_analyzer,
+            metadata_resolver=self.metadata_resolver,
+            deduplicator=PaperDeduplicator(),
+            disambiguator=PaperDisambiguator(cfg.search_policy),
+            fulltext_resolver=self.fulltext_resolver,
+            verifier=FulltextVerifier(cfg.search_policy),
+            cfg=cfg,
+        )
 
-    async def find_paper(self, raw_query: str) -> PaperSearchResult:
-        query = classify_query(raw_query)
-        logger.debug("find paper query: {}".format(query))
+    async def search(self, raw_query: str, *, event: Any | None = None, need_fulltext: bool = True):
+        return await self.pipeline.run(raw_query, event=event, need_fulltext=need_fulltext)
 
-        if not self.cfg.core_api.enabled:
-            return PaperSearchResult(query=query, candidates=[], status="disabled", message="CORE API is disabled")
+    # Backward-compatible wrapper for your previous command/tool code.
+    async def find_paper(self, raw_query: str, *, event: Any | None = None):
+        return await self.search(raw_query, event=event, need_fulltext=True)
 
-        limit = self.cfg.core_api.topic_candidate_limit if query.kind == QueryKind.TOPIC else self.cfg.core_api.default_limit
-        core_queries = build_core_queries(query, enable_rewrite=self.cfg.search_policy.enable_query_rewrite)
-        all_candidates: list[PaperCandidate] = []
-        errors: list[str] = []
-
-        # For CORE-only version, queries are tried from strict to broad. We stop
-        # when we have a high-confidence candidate; otherwise broaden gradually.
-        for cq in core_queries:
-            try:
-                candidates = await self.core.search_works(cq, limit=limit, sort=self.cfg.core_api.sort)
-            except CoreAPIError as e:
-                errors.append(str(e))
-                continue
-            all_candidates.extend(candidates)
-            ranked_now = rank_candidates(query, all_candidates)
-            accepted = self._maybe_accept(query, ranked_now)
-            if accepted is not None and query.kind != QueryKind.TOPIC:
-                return PaperSearchResult(query=query, candidates=ranked_now, accepted=accepted, ambiguous=False, status="ok")
-
-        ranked = rank_candidates(query, all_candidates)
-        if not ranked:
-            msg = "; ".join(errors) if errors else "没有找到候选论文"
-            return PaperSearchResult(query=query, candidates=[], status="not_found", message=msg)
-
-        accepted = None if query.kind == QueryKind.TOPIC else self._maybe_accept(query, ranked)
-        ambiguous = accepted is None and query.kind != QueryKind.TOPIC
-        return PaperSearchResult(query=query, candidates=ranked, accepted=accepted, ambiguous=ambiguous, status="ok")
-
-    def _maybe_accept(self, query, ranked: list[PaperCandidate]) -> PaperCandidate | None:
-        if not ranked:
-            return None
-        top1 = ranked[0]
-        if top1.score < self.cfg.search_policy.accept_min_score:
-            return None
-        if len(ranked) >= 2 and (top1.score - ranked[1].score) < self.cfg.search_policy.ambiguous_gap_threshold:
-            return None
-        return top1
+    async def aclose(self) -> None:
+        await self.core_client.aclose()

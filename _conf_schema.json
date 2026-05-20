@@ -6,14 +6,14 @@
       "default_provider_id": {
         "type": "string",
         "description": "通用模型 Provider",
-        "hint": "用于普通摘要、整理、问答。留空则使用当前会话默认 Provider。",
+        "hint": "用于普通摘要、整理、搜索 QueryAnalyzer。留空则使用当前会话默认 Provider。",
         "default": "",
         "_special": "select_provider"
       },
       "thinking_provider_id": {
         "type": "string",
         "description": "思考模型 Provider",
-        "hint": "用于论文理解、方法分析、规划等较重任务。留空则回退到通用模型 Provider。",
+        "hint": "用于论文理解、方法分析、规划等较重任务。留空则回退到通用 Provider。",
         "default": "",
         "_special": "select_provider"
       },
@@ -21,6 +21,34 @@
         "type": "bool",
         "description": "启用调试日志",
         "default": false
+      }
+    }
+  },
+  "query_analyzer": {
+    "type": "object",
+    "description": "自然语言检索解析",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "启用 LLM QueryAnalyzer",
+        "default": true
+      },
+      "provider_id": {
+        "type": "string",
+        "description": "QueryAnalyzer 使用的模型 Provider",
+        "hint": "留空则使用 general.default_provider_id；仍为空则使用当前会话 Provider。",
+        "default": "",
+        "_special": "select_provider"
+      },
+      "max_repair_rounds": {
+        "type": "int",
+        "description": "API 查不到候选时，允许 LLM 修复 SearchPlan 的轮数",
+        "default": 1
+      },
+      "max_hypotheses": {
+        "type": "int",
+        "description": "LLM 最多生成多少个检索假设",
+        "default": 5
       }
     }
   },
@@ -36,7 +64,7 @@
       "api_key": {
         "type": "string",
         "description": "CORE API Key",
-        "hint": "建议填写。没有 key 时只能做非常有限的公开元数据查询。",
+        "hint": "建议填写。没有 key 时只能做有限公开元数据查询。",
         "default": "",
         "obscure": true
       },
@@ -64,7 +92,10 @@
         "type": "string",
         "description": "CORE 排序方式",
         "default": "relevance",
-        "options": ["relevance", "recency"]
+        "options": [
+          "relevance",
+          "recency"
+        ]
       }
     }
   },
@@ -84,14 +115,18 @@
       },
       "max_return_candidates": {
         "type": "int",
-        "description": "有歧义时最多返回候选数量",
+        "description": "最多返回候选数量",
         "default": 5
       },
-      "enable_query_rewrite": {
+      "enable_fulltext_verify": {
         "type": "bool",
-        "description": "启用简单查询改写",
-        "hint": "当前版本只做规则改写；后续可以接入通用/思考模型。",
+        "description": "启用全文候选 URL 验证",
         "default": true
+      },
+      "max_fulltext_candidates": {
+        "type": "int",
+        "description": "每篇论文最多验证多少个全文候选 URL",
+        "default": 3
       }
     }
   }
