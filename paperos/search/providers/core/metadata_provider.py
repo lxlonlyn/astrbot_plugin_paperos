@@ -1,35 +1,50 @@
-from __future__ import annotations
-
 from astrbot.api import logger
 
-from ...models import SearchIntent, SearchPlan, PaperCandidate
+from ..base import MetadataProvider
+from ...models import PaperCandidate, SearchIntent, SearchPlan
 from .client import CoreAPIError, CoreClient
-from .query_builder import build_core_queries_for_hypothesis
+from .query_builder import build_core_queries
 
 
-class CoreMetadataProvider:
+class CoreMetadataProvider(MetadataProvider):
     name = "core"
 
     def __init__(self, client: CoreClient):
         self.client = client
 
-    async def resolve(self, plan: SearchPlan) -> list[PaperCandidate]:
-        limit = plan.max_candidates
-        if plan.intent == SearchIntent.TOPIC_DISCOVERY:
-            limit = min(max(plan.max_candidates, 10), 50)
+    async def search(self, plan: SearchPlan) -> list[PaperCandidate]:
+        limit = self._limit_for_plan(plan)
+        queries = build_core_queries(plan)
+        logger.debug(
+            "[PaperOS][CoreMetadataProvider] executing %d CORE queries: %s",
+            len(queries),
+            self._short_query_list(queries),
+        )
 
         all_candidates: list[PaperCandidate] = []
-        for hyp in plan.hypotheses:
-            queries = build_core_queries_for_hypothesis(hyp, plan)
-            for q in queries:
-                try:
-                    candidates = await self.client.search_works(q, limit=limit)
-                    all_candidates.extend(candidates)
-                    # Specific search: once a strict query gives candidates, let scoring/disambiguation handle them.
-                    if candidates and plan.intent != SearchIntent.TOPIC_DISCOVERY:
-                        break
-                except CoreAPIError as exc:
-                    logger.warning(f"[PaperOS][CORE] query failed {q!r}: {exc}")
-            if all_candidates and plan.intent != SearchIntent.TOPIC_DISCOVERY:
-                break
+        for query in queries:
+            try:
+                candidates = await self.client.search_works(
+                    query,
+                    limit=limit,
+                    sort=self.client.cfg.sort,
+                )
+            except CoreAPIError as exc:
+                logger.warning("[PaperOS][CoreMetadataProvider] query failed q=%r error=%s", query, exc)
+                continue
+            all_candidates.extend(candidates)
         return all_candidates
+
+    def _limit_for_plan(self, plan: SearchPlan) -> int:
+        if plan.intent == SearchIntent.TOPIC_DISCOVERY:
+            return max(1, min(plan.max_candidates, self.client.cfg.topic_candidate_limit))
+        return max(1, min(plan.max_candidates, self.client.cfg.default_limit))
+
+    def _short_query_list(self, queries: list[str], *, max_items: int = 5) -> str:
+        shown = [q if len(q) <= 80 else q[:77] + "..." for q in queries[:max_items]]
+        suffix = "" if len(queries) <= max_items else f" ... +{len(queries) - max_items}"
+        return "; ".join(shown) + suffix
+
+    async def aclose(self) -> None:
+        # CoreClient is shared by metadata and future fulltext providers; service closes pipeline once.
+        return None

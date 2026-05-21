@@ -45,7 +45,7 @@ class CoreClient:
             "offset": max(0, int(offset)),
             "sort": sort or self.cfg.sort or "relevance",
         }
-        logger.debug(f"[PaperOS][CORE] GET {url}, params={params}")
+        logger.debug("[PaperOS][CORE] GET %s params=%s", url, params)
         resp = await self._http().get(url, params=params, headers=self._headers())
         if resp.status_code >= 400:
             raise CoreAPIError(f"CORE search failed: {resp.status_code} {resp.text[:300]}")

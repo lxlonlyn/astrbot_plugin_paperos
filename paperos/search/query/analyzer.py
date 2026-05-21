@@ -34,15 +34,12 @@ class AstrBotLLMQueryAnalyzer:
                 chat_provider_id=provider_id,
                 prompt=prompt,
             )
-            logger.debug("[PaperOS] llm analysis result: {}".format(resp))
-
             data = self._extract_json(resp.completion_text)
             plan = parse_search_plan(
                 data,
                 raw_query=raw_query,
                 max_hypotheses=self.cfg.query_analyzer.max_hypotheses,
             )
-
             if not plan.hypotheses:
                 return fallback_analyze(raw_query)
             return plan
