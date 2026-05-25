@@ -30,14 +30,34 @@ class CoreClient:
             headers["Authorization"] = f"Bearer {self.cfg.api_key}"
         return headers
 
+    def download_headers(self) -> dict[str, str]:
+        headers = {"Accept": "application/pdf,*/*;q=0.5"}
+        if self.cfg.api_key:
+            headers["Authorization"] = f"Bearer {self.cfg.api_key}"
+        return headers
+
+    def has_api_key(self) -> bool:
+        return bool(self.cfg.api_key)
+
+    def output_download_url(self, output_id: str | int) -> str:
+        return f"{self.base_url}/outputs/{output_id}/download"
+
     def _http(self) -> httpx.AsyncClient:
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=self.cfg.timeout_seconds, follow_redirects=True)
         return self._client
 
-    async def search_works(self, q: str, *, limit: int, offset: int = 0, sort: str | None = None) -> list[PaperCandidate]:
+    async def search_works(
+        self,
+        q: str,
+        *,
+        limit: int,
+        offset: int = 0,
+        sort: str | None = None,
+    ) -> list[PaperCandidate]:
         if not self.cfg.enabled:
             return []
+
         url = f"{self.base_url}/search/works/"
         params = {
             "q": q,
@@ -45,15 +65,51 @@ class CoreClient:
             "offset": max(0, int(offset)),
             "sort": sort or self.cfg.sort or "relevance",
         }
+
         logger.debug("[PaperOS][CORE] GET %s params=%s", url, params)
         resp = await self._http().get(url, params=params, headers=self._headers())
         if resp.status_code >= 400:
-            raise CoreAPIError(f"CORE search failed: {resp.status_code} {resp.text[:300]}")
+            raise CoreAPIError(f"CORE search works failed: {resp.status_code} {resp.text[:300]}")
+
         data = resp.json()
         results = data.get("results") or []
         if not isinstance(results, list):
             return []
         return [self._work_to_candidate(x) for x in results if isinstance(x, dict)]
+
+    async def search_outputs(
+        self,
+        q: str,
+        *,
+        limit: int,
+        offset: int = 0,
+        sort: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Search CORE outputs.
+
+        Outputs are the correct CORE-side objects for fulltext download.  A work
+        may expose only landing/source URLs, while an output can be downloaded
+        through /v3/outputs/{id}/download when accessible.
+        """
+        if not self.cfg.enabled:
+            return []
+
+        url = f"{self.base_url}/search/outputs/"
+        params = {
+            "q": q,
+            "limit": max(1, min(int(limit), 20)),
+            "offset": max(0, int(offset)),
+            "sort": sort or self.cfg.sort or "relevance",
+        }
+
+        logger.debug("[PaperOS][CORE] GET %s params=%s", url, params)
+        resp = await self._http().get(url, params=params, headers=self._headers())
+        if resp.status_code >= 400:
+            raise CoreAPIError(f"CORE search outputs failed: {resp.status_code} {resp.text[:300]}")
+
+        data = resp.json()
+        results = data.get("results") or []
+        return [x for x in results if isinstance(x, dict)] if isinstance(results, list) else []
 
     async def get_work(self, core_id: str) -> PaperCandidate | None:
         url = f"{self.base_url}/works/{core_id}"
@@ -69,12 +125,21 @@ class CoreClient:
         authors = self._authors(work.get("authors"))
         title = self._first_str(work.get("title")) or self._first_str(work.get("name")) or ""
         doi = self._first_str(work.get("doi"))
-        download_url = self._first_str(work.get("downloadUrl")) or self._first_str(work.get("download_url"))
-        landing_url = (
-            self._first_str(work.get("sourceFulltextUrls"))
-            or self._first_str(work.get("publisherLink"))
-            or self._first_str(work.get("links"))
+
+        download_url = (
+            self._first_str(work.get("downloadUrl"))
+            or self._first_str(work.get("download_url"))
+            or self._first_download_link(work.get("links"))
         )
+
+        # Landing/source URLs are metadata only. They should not be treated as
+        # PDF fulltext candidates by CoreFulltextProvider.
+        landing_url = (
+            self._first_str(work.get("publisherLink"))
+            or self._first_str(work.get("sourceFulltextUrls"))
+            or self._first_landing_link(work.get("links"))
+        )
+
         return PaperCandidate(
             title=title,
             authors=authors,
@@ -90,6 +155,20 @@ class CoreClient:
             landing_url=landing_url,
             source="core",
             raw=work,
+        )
+
+    def output_id(self, output: dict[str, Any]) -> str | None:
+        for key in ("id", "outputId", "coreId"):
+            value = output.get(key)
+            if value is not None:
+                return str(value)
+        return None
+
+    def output_download_url_from_object(self, output: dict[str, Any]) -> str | None:
+        return (
+            self._first_str(output.get("downloadUrl"))
+            or self._first_str(output.get("download_url"))
+            or self._first_download_link(output.get("links"))
         )
 
     def _authors(self, value: Any) -> list[str]:
@@ -118,11 +197,34 @@ class CoreClient:
                     return s
             return None
         if isinstance(value, dict):
-            for key in ("url", "name", "title", "value", "link"):
+            for key in ("url", "href", "downloadUrl", "link", "name", "title", "value"):
                 if key in value:
                     s = self._first_str(value[key])
                     if s:
                         return s
+        return None
+
+    def _first_download_link(self, value: Any) -> str | None:
+        if not isinstance(value, list):
+            return None
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            kind = str(item.get("type") or item.get("rel") or "").lower()
+            url = self._first_str(item)
+            if url and ("download" in kind or url.lower().endswith(".pdf") or "/download" in url.lower()):
+                return url
+        return None
+
+    def _first_landing_link(self, value: Any) -> str | None:
+        if not isinstance(value, list):
+            return None
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            url = self._first_str(item)
+            if url:
+                return url
         return None
 
     def _safe_int(self, value: Any) -> int | None:

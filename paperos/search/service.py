@@ -31,11 +31,13 @@ class PaperSearchService:
             cfg=cfg,
             context=astrbot_context,
         )
+
         metadata_resolver = CandidateResolver(
             providers=[CoreMetadataProvider(self.core_client)]
         )
+
         fulltext_resolver = FulltextResolver(
-            providers=[CoreFulltextProvider()]
+            providers=[CoreFulltextProvider(self.core_client)]
         )
 
         self.pipeline = PaperSearchPipeline(
@@ -47,9 +49,18 @@ class PaperSearchService:
             fulltext_resolver=fulltext_resolver,
             verifier=FulltextVerifier(cfg.search_policy),
         )
-        logger.debug("[PaperOS][SearchService] initialized metadata_providers=[core] fulltext_providers=[core]")
 
-    async def search(self, raw_query: str, *, event=None, need_fulltext: bool = True) -> PaperSearchResult:
+        logger.debug(
+            "[PaperOS][SearchService] initialized metadata_providers=[core] fulltext_providers=[core]"
+        )
+
+    async def search(
+        self,
+        raw_query: str,
+        *,
+        event=None,
+        need_fulltext: bool = True,
+    ) -> PaperSearchResult:
         """Search papers from natural-language query.
 
         This is the only method other PaperOS modules should call.

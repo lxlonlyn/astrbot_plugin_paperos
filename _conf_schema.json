@@ -120,13 +120,24 @@
       },
       "enable_fulltext_verify": {
         "type": "bool",
-        "description": "启用全文候选 URL 验证",
+        "description": "启用严格 PDF 下载验证",
+        "hint": "开启后，候选 fulltext 必须下载到 data/plugin_data/astrbot_plugin_paperos/searcher/fulltext 并被 pypdf 验证。HTML/landing 不算合格 fulltext。",
         "default": true
       },
       "max_fulltext_candidates": {
         "type": "int",
-        "description": "每篇论文最多验证多少个全文候选 URL",
+        "description": "每篇论文最多尝试下载/验证多少个全文候选 URL",
         "default": 3
+      },
+      "max_pdf_size_mb": {
+        "type": "int",
+        "description": "单个 PDF 最大下载大小，MB",
+        "default": 100
+      },
+      "download_timeout_seconds": {
+        "type": "int",
+        "description": "PDF 下载超时时间，秒",
+        "default": 60
       }
     }
   }

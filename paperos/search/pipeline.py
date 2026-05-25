@@ -3,7 +3,7 @@ from astrbot.api import logger
 from ..config import PaperOSConfig
 from .acquire.fulltext_resolver import FulltextResolver
 from .acquire.verifier import FulltextVerifier
-from .models import PaperCandidate, PaperSearchResult, SearchPlan
+from .models import FulltextStatus, PaperCandidate, PaperSearchResult, SearchPlan
 from .query.analyzer import AstrBotLLMQueryAnalyzer
 from .resolve.candidate_resolver import CandidateResolver
 from .resolve.dedup import PaperDeduplicator
@@ -12,11 +12,7 @@ from .resolve.scoring import score_candidates
 
 
 class PaperSearchPipeline:
-    """Stage-by-stage orchestration for PaperOS search.
-
-    Service owns dependency construction. Pipeline owns the runtime flow.
-    This keeps service and pipeline non-redundant while making each stage typed.
-    """
+    """Stage-by-stage orchestration for PaperOS search."""
 
     def __init__(
         self,
@@ -43,8 +39,17 @@ class PaperSearchPipeline:
             return PaperSearchResult(status="disabled", message="CORE API disabled")
 
         logger.debug("[PaperOS][Pipeline] start raw_query=%r need_fulltext=%s", raw_query, need_fulltext)
+
         plan = await self.query_analyzer.analyze(raw_query, event=event)
-        plan.need_fulltext = bool(need_fulltext and plan.need_fulltext)
+        llm_need_fulltext = plan.need_fulltext
+        plan.need_fulltext = bool(need_fulltext)
+
+        logger.debug(
+            "[PaperOS][Pipeline] fulltext_policy caller=%s llm=%s final=%s",
+            need_fulltext,
+            llm_need_fulltext,
+            plan.need_fulltext,
+        )
         logger.debug("[PaperOS][Pipeline] stage=query_analyze %s", self._summarize_plan(plan))
 
         candidates = await self._resolve_score_dedup(plan)
@@ -76,8 +81,22 @@ class PaperSearchPipeline:
         logger.debug("[PaperOS][Pipeline] stage=disambiguate selected=%s", self._summarize_candidates(selected))
 
         targets: list[PaperCandidate] = selected or candidates[: plan.final_limit]
+
         if plan.need_fulltext:
             await self._resolve_fulltext(targets)
+
+            if not self._has_verified_pdf(targets):
+                logger.debug(
+                    "[PaperOS][Pipeline] done status=not_found reason=no_verified_pdf targets=%d",
+                    len(targets),
+                )
+                return PaperSearchResult(
+                    status="not_found",
+                    message="found metadata candidates, but no verified PDF was downloaded",
+                    plan=plan,
+                    candidates=candidates,
+                    selected=[],
+                )
 
         status = "selected" if selected else "ambiguous"
         logger.debug(
@@ -87,6 +106,7 @@ class PaperSearchPipeline:
             len(selected),
             plan.need_fulltext,
         )
+
         return PaperSearchResult(
             status=status,
             message="",
@@ -109,15 +129,25 @@ class PaperSearchPipeline:
                 self._short(paper.title),
                 len(locations),
             )
+
             verified = []
             for loc in locations[: self.cfg.search_policy.max_fulltext_candidates]:
-                verified.append(await self.verifier.verify(loc, paper))
+                verified_loc = await self.verifier.verify(loc, paper)
+                verified.append(verified_loc)
+
+                if verified_loc.status == FulltextStatus.VERIFIED_PDF:
+                    break
+
             paper.fulltext_locations = verified
             logger.debug(
-                "[PaperOS][Pipeline] stage=fulltext_verify paper=%s statuses=%s",
+                "[PaperOS][Pipeline] stage=fulltext_verify paper=%s statuses=%s pdf=%s",
                 self._short(paper.title),
                 [loc.status.value for loc in verified],
+                bool(paper.best_verified_pdf()),
             )
+
+    def _has_verified_pdf(self, papers: list[PaperCandidate]) -> bool:
+        return any(paper.best_verified_pdf() is not None for paper in papers)
 
     def _summarize_plan(self, plan: SearchPlan) -> str:
         kinds = [h.kind.value for h in plan.hypotheses[:5]]

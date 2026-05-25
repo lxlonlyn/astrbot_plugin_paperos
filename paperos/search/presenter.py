@@ -1,5 +1,5 @@
 from ..config import PaperOSConfig
-from .models import FulltextStatus, PaperCandidate, PaperSearchResult
+from .models import PaperCandidate, PaperSearchResult
 
 
 class PaperSearchPresenter:
@@ -16,7 +16,8 @@ class PaperSearchPresenter:
             f"- CORE API Key: {key_state}\n"
             f"- 通用 Provider: {self.cfg.general.default_provider_id or '使用当前会话默认'}\n"
             f"- 思考 Provider: {self.cfg.general.thinking_provider_id or '回退到通用 Provider'}\n"
-            f"- QueryAnalyzer: {'启用' if self.cfg.query_analyzer.enabled else '禁用'}"
+            f"- QueryAnalyzer: {'启用' if self.cfg.query_analyzer.enabled else '禁用'}\n"
+            f"- Fulltext PDF 下载验证: {'启用' if self.cfg.search_policy.enable_fulltext_verify else '禁用'}"
         )
 
     def format_search_result(self, result: PaperSearchResult, *, compact: bool = False) -> str:
@@ -32,12 +33,20 @@ class PaperSearchPresenter:
                 kinds = ", ".join(h.kind.value for h in result.plan.hypotheses[:4])
                 header.append(f"检索假设：{kinds}")
 
-        if result.status in {"not_found", "error"} or not result.candidates:
+        if result.status == "not_found":
+            lines = header + [f"没有取得合格 PDF。{result.message}".strip()]
+            if result.candidates:
+                lines.append(f"metadata 候选数量：{len(result.candidates)}")
+                lines.append("注意：HTML/landing 页面不算合格 fulltext，已被视为未取得 PDF。")
+            return "\n".join(lines)
+
+        if result.status == "error" or not result.candidates:
             body = f"没有找到合适的论文。{result.message}".strip()
             return "\n".join(header + [body]) if header else body
 
         display_items = result.selected or result.candidates
         limit = min(len(display_items), self.cfg.search_policy.max_return_candidates)
+
         if result.selected:
             lines = header + [f"选中 {len(result.selected)} 篇，展示前 {limit} 篇："]
         else:
@@ -57,6 +66,7 @@ class PaperSearchPresenter:
             f"{prefix}{cand.title or '(无标题)'}",
             f" 年份：{cand.year or '未知'}；分数：{cand.score:.2f}；来源：{cand.source}",
         ]
+
         if authors:
             parts.append(f" 作者：{authors}")
         if cand.venue:
@@ -68,16 +78,15 @@ class PaperSearchPresenter:
         if cand.core_id:
             parts.append(f" CORE ID：{cand.core_id}")
 
-        verified_pdf = next(
-            (loc for loc in cand.fulltext_locations if loc.status == FulltextStatus.VERIFIED_PDF),
-            None,
-        )
-        if verified_pdf:
-            parts.append(f" 已验证 PDF：{verified_pdf.url}")
-        elif cand.download_url:
-            parts.append(f" PDF/下载候选：{cand.download_url}")
-        elif cand.landing_url:
-            parts.append(f" Landing：{cand.landing_url}")
+        pdf = cand.best_verified_pdf()
+        if pdf:
+            parts.append(f" 已下载并验证 PDF：{pdf.local_path}")
+            if pdf.sha256:
+                parts.append(f" PDF sha256：{pdf.sha256[:16]}…")
+            if pdf.page_count is not None:
+                parts.append(f" PDF 页数：{pdf.page_count}")
+        else:
+            parts.append(" PDF：未取得可验证本地 PDF")
 
         if not compact and cand.score_reason:
             parts.append(f" 匹配依据：{cand.score_reason}")

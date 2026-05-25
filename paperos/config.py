@@ -35,8 +35,14 @@ class SearchPolicyConfig:
     accept_min_score: float = 0.78
     ambiguous_gap_threshold: float = 0.08
     max_return_candidates: int = 5
+
+    # Fulltext verification is strict: candidate URL must be downloaded into
+    # AstrBot data/plugin_data/astrbot_plugin_paperos/searcher/fulltext and
+    # validated as a readable local PDF.
     enable_fulltext_verify: bool = True
     max_fulltext_candidates: int = 3
+    max_pdf_size_mb: int = 100
+    download_timeout_seconds: int = 60
 
 
 @dataclass(frozen=True)
@@ -86,5 +92,7 @@ def load_config(raw: Mapping[str, Any]) -> PaperOSConfig:
             max_return_candidates=int(search_policy.get("max_return_candidates", 5) or 5),
             enable_fulltext_verify=bool(search_policy.get("enable_fulltext_verify", True)),
             max_fulltext_candidates=int(search_policy.get("max_fulltext_candidates", 3) or 3),
+            max_pdf_size_mb=int(search_policy.get("max_pdf_size_mb", 100) or 100),
+            download_timeout_seconds=int(search_policy.get("download_timeout_seconds", 60) or 60),
         ),
     )
