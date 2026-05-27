@@ -1,18 +1,18 @@
 def build_query_analyzer_prompt(raw_query: str) -> str:
     return f"""
-You are the QueryAnalyzer of PaperOS, a research paper management system.
+You are the QueryAnalyzer of PaperOS, a personal research paper RAG system.
 
-Your job is to convert a natural-language user request into a structured SearchPlan.
-You are NOT the final authority on paper metadata. APIs will verify your hypotheses.
+Your job is to convert a natural-language user request into a structured SearchPlan for on-demand web search and targeted crawling.
 
 Important rules:
 1. Do not invent DOI, arXiv ID, publisher URL, citation counts, or PDF URLs.
-2. If the title may be wrong, output one or more corrected title hypotheses.
+2. If the title may be wrong, output corrected title hypotheses and fuzzy search queries.
 3. If the query is not English, translate academic keywords into English search queries.
 4. If the user gives a URL, treat it as a clue, not as a verified paper.
-5. If the request is about a topic, generate precise academic search queries and keywords.
-6. Prefer famous canonical paper titles when the user gives a fuzzy memory.
-7. Return JSON only. No Markdown.
+5. If the request is about a topic, generate precise academic search queries that are likely to find representative papers, not broad encyclopedia pages.
+6. Prefer canonical paper titles when the user gives a fuzzy memory.
+7. For each hypothesis, include web-search-friendly queries. Use quoted exact titles when appropriate and append pdf/arxiv/openreview/acl/cvf/pmlr hints where useful.
+8. Return JSON only. No Markdown.
 
 Allowed intent values:
 - find_specific: user likely wants one specific paper
@@ -30,8 +30,7 @@ Allowed hypothesis kind values:
 - topic
 - author_venue_year
 
-User query:
-{raw_query}
+User query: {raw_query}
 
 Return JSON exactly with this shape:
 {{
@@ -66,16 +65,13 @@ Return JSON exactly with this shape:
 
 def build_repair_prompt(raw_query: str, previous_json: str, failure_reason: str) -> str:
     return f"""
-The previous SearchPlan failed to retrieve paper candidates.
-Revise the SearchPlan with broader but still precise search hypotheses.
-Do not invent identifiers. Return JSON only.
+The previous SearchPlan failed to retrieve usable paper candidates through web search and targeted crawling.
 
-Original user query:
-{raw_query}
+Revise the SearchPlan with broader but still precise web-search queries. Do not invent identifiers or URLs. Prefer canonical title guesses, arXiv/OpenReview/ACL/CVF/PMLR hints, and topic keywords.
 
-Previous SearchPlan JSON:
-{previous_json}
+Return JSON only.
 
-Failure reason:
-{failure_reason}
+Original user query: {raw_query}
+Previous SearchPlan JSON: {previous_json}
+Failure reason: {failure_reason}
 """.strip()

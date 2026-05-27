@@ -6,6 +6,7 @@ from ..models import HypothesisKind, PaperHypothesis, SearchIntent, SearchPlan
 
 _DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", re.I)
 _ARXIV_RE = re.compile(r"\b(?:arxiv:)?(\d{4}\.\d{4,5})(?:v\d+)?\b", re.I)
+_OLD_ARXIV_RE = re.compile(r"\b([a-z-]+(?:\.[A-Z]{2})?/\d{7})(?:v\d+)?\b", re.I)
 _URL_RE = re.compile(r"https?://\S+", re.I)
 
 
@@ -14,23 +15,56 @@ def fallback_analyze(raw_query: str) -> SearchPlan:
     hypotheses: list[PaperHypothesis] = []
 
     for doi in _DOI_RE.findall(q):
-        hypotheses.append(PaperHypothesis(kind=HypothesisKind.DOI, confidence=0.95, doi=doi, search_queries=[f'doi:"{doi}"']))
+        hypotheses.append(
+            PaperHypothesis(
+                kind=HypothesisKind.DOI,
+                confidence=0.95,
+                doi=doi,
+                search_queries=[f'"{doi}" pdf', f'"{doi}" paper'],
+            )
+        )
 
-    for arxiv_id in _ARXIV_RE.findall(q):
-        hypotheses.append(PaperHypothesis(kind=HypothesisKind.ARXIV, confidence=0.9, arxiv_id=arxiv_id, search_queries=[arxiv_id, f"10.48550/arXiv.{arxiv_id}"]))
+    for arxiv_id in _ARXIV_RE.findall(q) + _OLD_ARXIV_RE.findall(q):
+        hypotheses.append(
+            PaperHypothesis(
+                kind=HypothesisKind.ARXIV,
+                confidence=0.9,
+                arxiv_id=arxiv_id,
+                search_queries=[f"arxiv {arxiv_id}", f"{arxiv_id} pdf"],
+            )
+        )
 
     for url in _URL_RE.findall(q):
-        hypotheses.append(PaperHypothesis(kind=HypothesisKind.URL, confidence=0.75, url=url, search_queries=[url]))
+        hypotheses.append(PaperHypothesis(kind=HypothesisKind.URL, confidence=0.8, url=url, search_queries=[url]))
 
     if not hypotheses:
-        # Chinese or vague topic cues should not be forced into exact title matching.
-        is_topic = any(x in q for x in ["相关", "综述", "奠基", "经典", "有哪些", "方向", "领域", "topic", "survey", "related"])
+        is_topic = any(
+            x in q
+            for x in ["相关", "综述", "奠基", "经典", "有哪些", "方向", "领域", "topic", "survey", "related", "foundational"]
+        )
         if is_topic:
-            hypotheses.append(PaperHypothesis(kind=HypothesisKind.TOPIC, confidence=0.65, search_queries=[q]))
+            hypotheses.append(
+                PaperHypothesis(
+                    kind=HypothesisKind.TOPIC,
+                    confidence=0.65,
+                    search_queries=[
+                        f"{q} foundational paper pdf",
+                        f"{q} important papers arxiv",
+                        f"{q} survey representative papers",
+                    ],
+                )
+            )
             intent = SearchIntent.TOPIC_DISCOVERY
             final_limit = 5
         else:
-            hypotheses.append(PaperHypothesis(kind=HypothesisKind.FUZZY_TITLE, confidence=0.65, title=q, search_queries=[q, f'"{q}"']))
+            hypotheses.append(
+                PaperHypothesis(
+                    kind=HypothesisKind.FUZZY_TITLE,
+                    confidence=0.65,
+                    title=q,
+                    search_queries=[q, f'"{q}" pdf', f'"{q}" arxiv'],
+                )
+            )
             intent = SearchIntent.FIND_SPECIFIC
             final_limit = 1
     else:

@@ -7,10 +7,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from paperos.search.models import FulltextLocation, FulltextStatus, PaperCandidate
-
 from ..config import StorageConfig
 from ..ids import new_id
+from ..models import FulltextLocationRecord, PaperRecordDraft
 from ..objects import StoredObject
 from ..text import normalize_identifier, normalize_text
 
@@ -22,9 +21,9 @@ def utc_now() -> str:
 class SQLitePaperRepository:
     """SQLite implementation of the PaperOS local metadata store.
 
-    The class intentionally keeps methods small and explicit. It is safe to use
-    from async service code because operations are short; if ingestion becomes
-    highly concurrent, move calls to asyncio.to_thread without changing schema.
+    This class is deliberately storage-facing. It does not import search DTOs and
+    it never performs network I/O. Higher-level facades convert search results to
+    PaperRecordDraft before calling this repository.
     """
 
     def __init__(self, db_path: Path, cfg: StorageConfig | None = None):
@@ -65,16 +64,14 @@ class SQLitePaperRepository:
     async def aclose(self) -> None:
         self._conn.close()
 
-    # ---------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Paper identity / local dedup
-    # ---------------------------------------------------------------------
-    async def find_by_identifier(self, *, doi: str | None = None, arxiv_id: str | None = None) -> PaperCandidate | None:
-        candidates: list[tuple[str, str]] = []
-        if doi:
-            candidates.append(("doi", normalize_identifier("doi", doi)))
-        if arxiv_id:
-            candidates.append(("arxiv", normalize_identifier("arxiv", arxiv_id)))
-        for scheme, value in candidates:
+    # ------------------------------------------------------------------
+
+    async def find_by_identifier(self, *, doi: str | None = None, arxiv_id: str | None = None) -> PaperRecordDraft | None:
+        pairs: list[tuple[str, str | None]] = [("doi", doi), ("arxiv", arxiv_id)]
+        for scheme, raw_value in pairs:
+            value = normalize_identifier(scheme, raw_value)
             if not value:
                 continue
             row = self._conn.execute(
@@ -87,10 +84,10 @@ class SQLitePaperRepository:
                 (scheme, value),
             ).fetchone()
             if row:
-                return self._row_to_candidate(row)
+                return self._row_to_draft(row)
         return None
 
-    async def search_by_title(self, title: str, *, limit: int = 10) -> list[PaperCandidate]:
+    async def search_by_title(self, title: str, *, limit: int = 10) -> list[PaperRecordDraft]:
         title_norm = normalize_text(title)
         if not title_norm:
             return []
@@ -103,14 +100,13 @@ class SQLitePaperRepository:
             """,
             (title_norm, f"%{title_norm}%", limit),
         ).fetchall()
-        return [self._row_to_candidate(row) for row in rows]
+        return [self._row_to_draft(row) for row in rows]
 
-    async def exists(self, candidate: PaperCandidate) -> bool:
-        paper_id = await self.find_paper_id_for_candidate(candidate)
-        return paper_id is not None
+    async def exists(self, draft: PaperRecordDraft) -> bool:
+        return await self.find_paper_id_for_draft(draft) is not None
 
-    async def find_paper_id_for_candidate(self, candidate: PaperCandidate) -> str | None:
-        for scheme, value in self._candidate_identifiers(candidate):
+    async def find_paper_id_for_draft(self, draft: PaperRecordDraft) -> str | None:
+        for scheme, value in self._draft_identifiers(draft):
             row = self._conn.execute(
                 "SELECT paper_id FROM paper_identifiers WHERE scheme = ? AND value = ? LIMIT 1",
                 (scheme, value),
@@ -118,38 +114,35 @@ class SQLitePaperRepository:
             if row:
                 return str(row["paper_id"])
 
-        title_norm = normalize_text(candidate.title)
-        if title_norm:
-            params: tuple[Any, ...]
-            if candidate.year:
-                params = (title_norm, candidate.year)
-                row = self._conn.execute(
-                    "SELECT id FROM papers WHERE title_norm = ? AND year = ? LIMIT 1",
-                    params,
-                ).fetchone()
-            else:
-                row = self._conn.execute(
-                    "SELECT id FROM papers WHERE title_norm = ? LIMIT 1",
-                    (title_norm,),
-                ).fetchone()
-            if row:
-                return str(row["id"])
-        return None
+        title_norm = normalize_text(draft.title)
+        if not title_norm:
+            return None
+        if draft.year:
+            row = self._conn.execute(
+                "SELECT id FROM papers WHERE title_norm = ? AND year = ? LIMIT 1",
+                (title_norm, draft.year),
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT id FROM papers WHERE title_norm = ? LIMIT 1",
+                (title_norm,),
+            ).fetchone()
+        return str(row["id"]) if row else None
 
-    async def upsert_candidate(
+    async def upsert_paper(
         self,
-        candidate: PaperCandidate,
+        draft: PaperRecordDraft,
         *,
         source_query: str | None = None,
         decision: str = "search_selected",
         message: str | None = None,
     ) -> str:
-        """Insert/update a searched paper and return paper_id."""
+        """Insert/update a paper draft and return paper_id."""
 
         now = utc_now()
-        paper_id = await self.find_paper_id_for_candidate(candidate)
-        title_norm = normalize_text(candidate.title)
-        metadata = self._candidate_metadata(candidate)
+        paper_id = await self.find_paper_id_for_draft(draft)
+        title_norm = normalize_text(draft.title)
+        metadata = self._draft_metadata(draft)
 
         with self._conn:
             if paper_id is None:
@@ -157,20 +150,20 @@ class SQLitePaperRepository:
                 self._conn.execute(
                     """
                     INSERT INTO papers(
-                        id, canonical_title, title_norm, abstract, year, venue, publisher,
-                        source, citation_count, created_at, updated_at
+                        id, canonical_title, title_norm, abstract, year, venue,
+                        publisher, source, citation_count, created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         paper_id,
-                        candidate.title,
+                        draft.title,
                         title_norm,
-                        candidate.abstract,
-                        candidate.year,
-                        candidate.venue,
-                        candidate.publisher,
-                        candidate.source,
-                        candidate.citation_count,
+                        draft.abstract,
+                        draft.year,
+                        draft.venue,
+                        draft.publisher,
+                        draft.source,
+                        draft.citation_count,
                         now,
                         now,
                     ),
@@ -191,50 +184,50 @@ class SQLitePaperRepository:
                     WHERE id = ?
                     """,
                     (
-                        candidate.title,
+                        draft.title,
                         title_norm,
-                        candidate.abstract,
-                        candidate.year,
-                        candidate.venue,
-                        candidate.publisher,
-                        candidate.source,
-                        candidate.citation_count,
+                        draft.abstract,
+                        draft.year,
+                        draft.venue,
+                        draft.publisher,
+                        draft.source,
+                        draft.citation_count,
                         now,
                         paper_id,
                     ),
                 )
 
-            self._upsert_alias(paper_id, candidate.title, "title", candidate.source, now)
-            for scheme, value in self._candidate_identifiers(candidate):
-                self._upsert_identifier(paper_id, scheme, value, candidate.source, now)
+            self._upsert_alias(paper_id, draft.title, "title", draft.source, now)
+            for scheme, value in self._draft_identifiers(draft):
+                self._upsert_identifier(paper_id, scheme, value, draft.source, now)
 
             version_id = new_id("pv")
-            best_loc = self.best_fulltext_location(candidate)
+            best_loc = self.best_fulltext_location(draft)
             self._conn.execute(
                 """
                 INSERT INTO paper_versions(
-                    id, paper_id, version_label, source, source_url, fulltext_status,
-                    discovered_at, is_current, metadata_json
+                    id, paper_id, version_label, source, source_url,
+                    fulltext_status, discovered_at, is_current, metadata_json
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
                 """,
                 (
                     version_id,
                     paper_id,
                     best_loc.version if best_loc else None,
-                    candidate.source,
-                    (best_loc.url if best_loc else candidate.download_url or candidate.landing_url),
-                    (best_loc.status.value if best_loc else None),
+                    draft.source,
+                    (best_loc.url if best_loc else draft.landing_url),
+                    (best_loc.status if best_loc else None),
                     now,
                     json.dumps(metadata, ensure_ascii=False),
                 ),
             )
             self._set_current_version(paper_id, version_id, now)
-            self._upsert_fulltext_locations(paper_id, version_id, candidate.fulltext_locations, now)
+            self._upsert_fulltext_locations(paper_id, version_id, draft.fulltext_locations, now)
             self._conn.execute(
                 """
                 INSERT INTO paper_ingest_events(
-                    id, paper_id, source_query, decision, message, candidate_score,
-                    metadata_json, created_at
+                    id, paper_id, source_query, decision, message,
+                    candidate_score, metadata_json, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -243,7 +236,7 @@ class SQLitePaperRepository:
                     source_query,
                     decision,
                     message,
-                    candidate.score,
+                    draft.score,
                     json.dumps(metadata, ensure_ascii=False),
                     now,
                 ),
@@ -253,6 +246,7 @@ class SQLitePaperRepository:
     # ------------------------------------------------------------------
     # Objects / versions
     # ------------------------------------------------------------------
+
     async def register_object(self, stored: StoredObject) -> str:
         now = utc_now()
         with self._conn:
@@ -290,10 +284,7 @@ class SQLitePaperRepository:
             if not row or not row["current_version_id"]:
                 raise ValueError(f"paper has no current version: {paper_id}")
             version_id = str(row["current_version_id"])
-            self._conn.execute(
-                "UPDATE paper_versions SET object_id = ? WHERE id = ?",
-                (object_id, version_id),
-            )
+            self._conn.execute("UPDATE paper_versions SET object_id = ? WHERE id = ?", (object_id, version_id))
             self._conn.execute(
                 """
                 INSERT OR IGNORE INTO paper_object_links(paper_id, object_id, role, created_at)
@@ -305,6 +296,7 @@ class SQLitePaperRepository:
     # ------------------------------------------------------------------
     # Jobs
     # ------------------------------------------------------------------
+
     async def enqueue_job(
         self,
         job_type: str,
@@ -323,8 +315,8 @@ class SQLitePaperRepository:
             self._conn.execute(
                 """
                 INSERT OR IGNORE INTO paper_jobs(
-                    id, job_type, dedupe_key, paper_id, version_id, object_id, status,
-                    priority, available_at, payload_json, created_at, updated_at
+                    id, job_type, dedupe_key, paper_id, version_id, object_id,
+                    status, priority, available_at, payload_json, created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
                 """,
                 (
@@ -388,10 +380,7 @@ class SQLitePaperRepository:
     async def mark_job_done(self, job_id: str) -> None:
         now = utc_now()
         with self._conn:
-            self._conn.execute(
-                "UPDATE paper_jobs SET status='done', finished_at=?, updated_at=? WHERE id=?",
-                (now, now, job_id),
-            )
+            self._conn.execute("UPDATE paper_jobs SET status='done', finished_at=?, updated_at=? WHERE id=?", (now, now, job_id))
 
     async def mark_job_failed(self, job_id: str, error_message: str) -> None:
         now = utc_now()
@@ -413,6 +402,7 @@ class SQLitePaperRepository:
     # ------------------------------------------------------------------
     # Chunks / FTS
     # ------------------------------------------------------------------
+
     async def replace_chunks(
         self,
         *,
@@ -467,13 +457,14 @@ class SQLitePaperRepository:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-    def _candidate_identifiers(self, candidate: PaperCandidate) -> list[tuple[str, str]]:
+
+    def _draft_identifiers(self, draft: PaperRecordDraft) -> list[tuple[str, str]]:
         pairs = [
-            ("doi", candidate.doi),
-            ("arxiv", candidate.arxiv_id),
-            ("core", candidate.core_id),
-            ("openalex", candidate.openalex_id),
-            ("semantic_scholar", candidate.semantic_scholar_id),
+            ("doi", draft.doi),
+            ("arxiv", draft.arxiv_id),
+            ("core", draft.core_id),
+            ("openalex", draft.openalex_id),
+            ("semantic_scholar", draft.semantic_scholar_id),
         ]
         out: list[tuple[str, str]] = []
         for scheme, value in pairs:
@@ -510,24 +501,21 @@ class SQLitePaperRepository:
     def _set_current_version(self, paper_id: str, version_id: str, now: str) -> None:
         self._conn.execute("UPDATE paper_versions SET is_current=0 WHERE paper_id=?", (paper_id,))
         self._conn.execute("UPDATE paper_versions SET is_current=1 WHERE id=?", (version_id,))
-        self._conn.execute(
-            "UPDATE papers SET current_version_id=?, updated_at=? WHERE id=?",
-            (version_id, now, paper_id),
-        )
+        self._conn.execute("UPDATE papers SET current_version_id=?, updated_at=? WHERE id=?", (version_id, now, paper_id))
 
     def _upsert_fulltext_locations(
         self,
         paper_id: str,
         version_id: str,
-        locations: list[FulltextLocation],
+        locations: list[FulltextLocationRecord],
         now: str,
     ) -> None:
         for loc in locations:
             self._conn.execute(
                 """
                 INSERT INTO fulltext_locations(
-                    id, paper_id, version_id, url, source, kind, status, license, version,
-                    host_type, confidence, reason, first_seen_at, last_seen_at
+                    id, paper_id, version_id, url, source, kind, status, license,
+                    version, host_type, confidence, reason, first_seen_at, last_seen_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(paper_id, url) DO UPDATE SET
                     version_id=excluded.version_id,
@@ -548,7 +536,7 @@ class SQLitePaperRepository:
                     loc.url,
                     loc.source,
                     loc.kind,
-                    loc.status.value if hasattr(loc.status, "value") else str(loc.status),
+                    loc.status,
                     loc.license,
                     loc.version,
                     loc.host_type,
@@ -559,24 +547,19 @@ class SQLitePaperRepository:
                 ),
             )
 
-    def best_fulltext_location(self, candidate: PaperCandidate) -> FulltextLocation | None:
-        if not candidate.fulltext_locations:
+    def best_fulltext_location(self, draft: PaperRecordDraft) -> FulltextLocationRecord | None:
+        if not draft.fulltext_locations:
             return None
 
-        def key(loc: FulltextLocation) -> tuple[int, float]:
-            status = loc.status.value if hasattr(loc.status, "value") else str(loc.status)
-            status_rank = {
-                FulltextStatus.VERIFIED_PDF.value: 100,
-                FulltextStatus.HTML_FULLTEXT.value: 60,
-                FulltextStatus.LANDING_ONLY.value: 20,
-            }.get(status, 0)
+        def key(loc: FulltextLocationRecord) -> tuple[int, float]:
+            status_rank = {"verified_pdf": 100, "html_fulltext": 60, "landing_only": 20}.get(loc.status, 0)
             return (status_rank, loc.confidence or 0.0)
 
-        return max(candidate.fulltext_locations, key=key)
+        return max(draft.fulltext_locations, key=key)
 
-    def _candidate_metadata(self, candidate: PaperCandidate) -> dict[str, Any]:
-        data = self._safe_dataclass_dict(candidate)
-        data["fulltext_locations"] = [self._safe_dataclass_dict(loc) for loc in candidate.fulltext_locations]
+    def _draft_metadata(self, draft: PaperRecordDraft) -> dict[str, Any]:
+        data = self._safe_dataclass_dict(draft)
+        data["fulltext_locations"] = [self._safe_dataclass_dict(loc) for loc in draft.fulltext_locations]
         return data
 
     def _safe_dataclass_dict(self, value: Any) -> dict[str, Any]:
@@ -597,8 +580,8 @@ class SQLitePaperRepository:
             return value.value
         return value
 
-    def _row_to_candidate(self, row: sqlite3.Row) -> PaperCandidate:
-        return PaperCandidate(
+    def _row_to_draft(self, row: sqlite3.Row) -> PaperRecordDraft:
+        return PaperRecordDraft(
             title=str(row["canonical_title"]),
             year=row["year"],
             venue=row["venue"],

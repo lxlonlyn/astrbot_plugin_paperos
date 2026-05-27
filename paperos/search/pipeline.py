@@ -1,59 +1,56 @@
+from __future__ import annotations
+
 from astrbot.api import logger
 
 from ..config import PaperOSConfig
-from .acquire.fulltext_resolver import FulltextResolver
 from .acquire.verifier import FulltextVerifier
+from .crawl.targeted import TargetedPaperCrawler
 from .models import FulltextStatus, PaperCandidate, PaperSearchResult, SearchPlan
 from .query.analyzer import AstrBotLLMQueryAnalyzer
-from .resolve.candidate_resolver import CandidateResolver
 from .resolve.dedup import PaperDeduplicator
 from .resolve.disambiguator import PaperDisambiguator
 from .resolve.scoring import score_candidates
 
 
 class PaperSearchPipeline:
-    """Stage-by-stage orchestration for PaperOS search."""
+    """Stage-by-stage orchestration for LLM + web + targeted crawler search."""
 
     def __init__(
         self,
         *,
         cfg: PaperOSConfig,
         query_analyzer: AstrBotLLMQueryAnalyzer,
-        metadata_resolver: CandidateResolver,
+        crawler: TargetedPaperCrawler,
         deduplicator: PaperDeduplicator,
         disambiguator: PaperDisambiguator,
-        fulltext_resolver: FulltextResolver,
         verifier: FulltextVerifier,
     ):
         self.cfg = cfg
         self.query_analyzer = query_analyzer
-        self.metadata_resolver = metadata_resolver
+        self.crawler = crawler
         self.deduplicator = deduplicator
         self.disambiguator = disambiguator
-        self.fulltext_resolver = fulltext_resolver
         self.verifier = verifier
 
     async def run(self, raw_query: str, *, event=None, need_fulltext: bool = True) -> PaperSearchResult:
-        if not self.cfg.core_api.enabled:
-            logger.debug("[PaperOS][Pipeline] aborted: CORE API disabled")
-            return PaperSearchResult(status="disabled", message="CORE API disabled")
+        if not self.cfg.web_search.enabled and not self.cfg.crawler.enabled:
+            logger.debug("[PaperOS][Pipeline] aborted: web_search and crawler disabled")
+            return PaperSearchResult(status="disabled", message="web_search and crawler disabled")
 
         logger.debug("[PaperOS][Pipeline] start raw_query=%r need_fulltext=%s", raw_query, need_fulltext)
-
         plan = await self.query_analyzer.analyze(raw_query, event=event)
         llm_need_fulltext = plan.need_fulltext
         plan.need_fulltext = bool(need_fulltext)
-
         logger.debug(
-            "[PaperOS][Pipeline] fulltext_policy caller=%s llm=%s final=%s",
+            "[PaperOS][Pipeline] stage=query_analyze %s fulltext_policy caller=%s llm=%s final=%s",
+            self._summarize_plan(plan),
             need_fulltext,
             llm_need_fulltext,
             plan.need_fulltext,
         )
-        logger.debug("[PaperOS][Pipeline] stage=query_analyze %s", self._summarize_plan(plan))
 
-        candidates = await self._resolve_score_dedup(plan)
-        logger.debug("[PaperOS][Pipeline] stage=metadata_resolve %s", self._summarize_candidates(candidates))
+        candidates = await self._discover_score_dedup(plan)
+        logger.debug("[PaperOS][Pipeline] stage=discover %s", self._summarize_candidates(candidates))
 
         repair_rounds = max(0, self.cfg.query_analyzer.max_repair_rounds)
         for round_idx in range(repair_rounds):
@@ -63,28 +60,25 @@ class PaperSearchPipeline:
             plan = await self.query_analyzer.repair(
                 raw_query,
                 previous_plan=plan,
-                failure_reason="metadata providers returned zero candidates",
+                failure_reason="web search and targeted crawler returned zero candidates",
                 event=event,
             )
-            logger.debug("[PaperOS][Pipeline] stage=query_repair %s", self._summarize_plan(plan))
-            candidates = await self._resolve_score_dedup(plan)
-            logger.debug("[PaperOS][Pipeline] stage=metadata_resolve_after_repair %s", self._summarize_candidates(candidates))
+            candidates = await self._discover_score_dedup(plan)
+            logger.debug("[PaperOS][Pipeline] stage=discover_after_repair %s", self._summarize_candidates(candidates))
 
         if not candidates:
             return PaperSearchResult(
                 status="not_found",
-                message="metadata providers returned zero candidates",
+                message="web search and targeted crawler returned zero candidates",
                 plan=plan,
             )
 
         selected = self.disambiguator.select(plan, candidates)
+        targets: list[PaperCandidate] = selected or candidates[: plan.final_limit]
         logger.debug("[PaperOS][Pipeline] stage=disambiguate selected=%s", self._summarize_candidates(selected))
 
-        targets: list[PaperCandidate] = selected or candidates[: plan.final_limit]
-
         if plan.need_fulltext:
-            await self._resolve_fulltext(targets)
-
+            await self._verify_fulltext(targets)
             if not self._has_verified_pdf(targets):
                 logger.debug(
                     "[PaperOS][Pipeline] done status=not_found reason=no_verified_pdf targets=%d",
@@ -92,7 +86,7 @@ class PaperSearchPipeline:
                 )
                 return PaperSearchResult(
                     status="not_found",
-                    message="found metadata candidates, but no verified PDF was downloaded",
+                    message="found paper candidates, but no candidate URL was verified as PDF",
                     plan=plan,
                     candidates=candidates,
                     selected=[],
@@ -106,41 +100,36 @@ class PaperSearchPipeline:
             len(selected),
             plan.need_fulltext,
         )
+        return PaperSearchResult(status=status, message="", plan=plan, candidates=candidates, selected=selected)
 
-        return PaperSearchResult(
-            status=status,
-            message="",
-            plan=plan,
-            candidates=candidates,
-            selected=selected,
-        )
-
-    async def _resolve_score_dedup(self, plan: SearchPlan) -> list[PaperCandidate]:
-        candidates = await self.metadata_resolver.resolve(plan)
+    async def _discover_score_dedup(self, plan: SearchPlan) -> list[PaperCandidate]:
+        candidates = await self.crawler.discover(plan)
         scored = score_candidates(plan, candidates)
         deduped = self.deduplicator.dedup(scored)
+        logger.debug(
+            "[PaperOS][Pipeline] stage=dedup before=%d after=%d",
+            len(scored),
+            len(deduped),
+        )
         return score_candidates(plan, deduped)
 
-    async def _resolve_fulltext(self, papers: list[PaperCandidate]) -> None:
+    async def _verify_fulltext(self, papers: list[PaperCandidate]) -> None:
         for paper in papers:
-            locations = await self.fulltext_resolver.resolve(paper)
+            candidates = paper.fulltext_locations[: self.cfg.search_policy.max_fulltext_candidates]
             logger.debug(
-                "[PaperOS][Pipeline] stage=fulltext_resolve paper=%s locations=%d",
+                "[PaperOS][Pipeline] stage=fulltext_verify_start paper=%s candidates=%d",
                 self._short(paper.title),
-                len(locations),
+                len(candidates),
             )
-
             verified = []
-            for loc in locations[: self.cfg.search_policy.max_fulltext_candidates]:
+            for loc in candidates:
                 verified_loc = await self.verifier.verify(loc, paper)
                 verified.append(verified_loc)
-
                 if verified_loc.status == FulltextStatus.VERIFIED_PDF:
                     break
-
-            paper.fulltext_locations = verified
+            paper.fulltext_locations = verified + [loc for loc in paper.fulltext_locations if loc not in candidates]
             logger.debug(
-                "[PaperOS][Pipeline] stage=fulltext_verify paper=%s statuses=%s pdf=%s",
+                "[PaperOS][Pipeline] stage=fulltext_verify_done paper=%s statuses=%s pdf=%s",
                 self._short(paper.title),
                 [loc.status.value for loc in verified],
                 bool(paper.best_verified_pdf()),
@@ -167,7 +156,7 @@ class PaperSearchPipeline:
         items = []
         for cand in candidates[:limit]:
             items.append(
-                f"{self._short(cand.title, 55)}|year={cand.year or '?'}|score={cand.score:.2f}|src={cand.source}"
+                f"{self._short(cand.title, 55)}|year={cand.year or '?'}|score={cand.score:.2f}|src={cand.source}|pdfs={len(cand.fulltext_locations)}"
             )
         suffix = "" if len(candidates) <= limit else f" ... +{len(candidates) - limit}"
         return f"count={len(candidates)} sample=[" + "; ".join(items) + "]" + suffix
@@ -176,6 +165,5 @@ class PaperSearchPipeline:
         return text if len(text) <= limit else text[: limit - 3] + "..."
 
     async def aclose(self) -> None:
-        await self.metadata_resolver.aclose()
-        await self.fulltext_resolver.aclose()
+        await self.crawler.aclose()
         await self.verifier.aclose()

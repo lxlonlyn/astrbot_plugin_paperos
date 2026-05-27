@@ -1,80 +1,66 @@
+from __future__ import annotations
+
 from typing import Any
 
 from astrbot.api import logger
 
 from ..config import PaperOSConfig
-from .acquire.fulltext_resolver import FulltextResolver
 from .acquire.verifier import FulltextVerifier
+from .crawl.domain_resolver import DomainResolver
+from .crawl.search_engine import DuckDuckGoHTMLSearchEngine
+from .crawl.targeted import TargetedPaperCrawler
 from .models import PaperSearchResult
 from .pipeline import PaperSearchPipeline
-from .providers.core.client import CoreClient
-from .providers.core.fulltext_provider import CoreFulltextProvider
-from .providers.core.metadata_provider import CoreMetadataProvider
 from .query.analyzer import AstrBotLLMQueryAnalyzer
-from .resolve.candidate_resolver import CandidateResolver
 from .resolve.dedup import PaperDeduplicator
 from .resolve.disambiguator import PaperDisambiguator
 
 
 class PaperSearchService:
-    """Public search facade used by AstrBot handlers, tools, RAG and ingestion.
+    """Public search facade used by AstrBot handlers/tools.
 
-    Service is responsible for dependency assembly and stable public methods.
-    Pipeline is responsible for search-stage orchestration.
+    SearchService performs online discovery and temporary acquisition only. It
+    never writes SQLite and never builds embeddings. Storage/RAG should not call
+    this service directly.
     """
 
     def __init__(self, cfg: PaperOSConfig, astrbot_context: Any):
         self.cfg = cfg
-        self.core_client = CoreClient(cfg.core_api)
-
-        query_analyzer = AstrBotLLMQueryAnalyzer(
-            cfg=cfg,
-            context=astrbot_context,
+        query_analyzer = AstrBotLLMQueryAnalyzer(cfg=cfg, context=astrbot_context)
+        search_engine = DuckDuckGoHTMLSearchEngine(cfg.web_search)
+        crawler = TargetedPaperCrawler(
+            crawler_cfg=cfg.crawler,
+            web_cfg=cfg.web_search,
+            search_engine=search_engine,
+            domain_resolver=DomainResolver(),
         )
-
-        metadata_resolver = CandidateResolver(
-            providers=[CoreMetadataProvider(self.core_client)]
-        )
-
-        fulltext_resolver = FulltextResolver(
-            providers=[CoreFulltextProvider(self.core_client)]
-        )
-
         self.pipeline = PaperSearchPipeline(
             cfg=cfg,
             query_analyzer=query_analyzer,
-            metadata_resolver=metadata_resolver,
+            crawler=crawler,
             deduplicator=PaperDeduplicator(),
             disambiguator=PaperDisambiguator(cfg.search_policy),
-            fulltext_resolver=fulltext_resolver,
             verifier=FulltextVerifier(cfg.search_policy),
         )
-
         logger.debug(
-            "[PaperOS][SearchService] initialized metadata_providers=[core] fulltext_providers=[core]"
+            "[PaperOS][SearchService] initialized strategy=llm_web_targeted_crawler web_backend=%s academic_api_fallback=%s",
+            cfg.web_search.backend,
+            cfg.crawler.academic_api_fallback,
         )
 
-    async def search(
-        self,
-        raw_query: str,
-        *,
-        event=None,
-        need_fulltext: bool = True,
-    ) -> PaperSearchResult:
+    async def search(self, raw_query: str, *, event=None, need_fulltext: bool = True) -> PaperSearchResult:
         """Search papers from natural-language query.
 
-        This is the only method other PaperOS modules should call.
+        The result may include verified local PDFs in `FulltextLocation.local_path`,
+        but persistence is still the storage module's job.
         """
-        return await self.pipeline.run(
-            raw_query=raw_query,
-            event=event,
-            need_fulltext=need_fulltext,
-        )
+
+        return await self.pipeline.run(raw_query=raw_query, event=event, need_fulltext=need_fulltext)
 
     async def find_paper(self, raw_query: str, *, event=None) -> PaperSearchResult:
         """Backward-compatible alias for old command/tool code."""
+
         return await self.search(raw_query, event=event, need_fulltext=True)
 
     async def aclose(self) -> None:
         await self.pipeline.aclose()
-        await self.core_client.aclose()

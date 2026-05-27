@@ -3,32 +3,31 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Protocol
 
-from ..search.models import PaperCandidate
-
+from .models import PaperRecordDraft
 from .objects import StoredObject
 
 
 class LocalPaperRepository(Protocol):
     """Local PaperOS metadata store.
 
-    Search-stage dedup is still handled by paperos.search.resolve.dedup. This
-    repository performs persistent dedup across runs and records versions,
-    objects, jobs and local indexes.
+    The repository is storage-facing and must not import `paperos.search`.
+    Search-stage candidates should be converted to PaperRecordDraft by a facade
+    or adapter before they enter storage.
     """
 
     async def initialize(self) -> None: ...
 
-    async def find_by_identifier(self, *, doi: str | None = None, arxiv_id: str | None = None) -> PaperCandidate | None: ...
+    async def find_by_identifier(self, *, doi: str | None = None, arxiv_id: str | None = None) -> PaperRecordDraft | None: ...
 
-    async def search_by_title(self, title: str, *, limit: int = 10) -> list[PaperCandidate]: ...
+    async def search_by_title(self, title: str, *, limit: int = 10) -> list[PaperRecordDraft]: ...
 
-    async def exists(self, candidate: PaperCandidate) -> bool: ...
+    async def exists(self, draft: PaperRecordDraft) -> bool: ...
 
-    async def find_paper_id_for_candidate(self, candidate: PaperCandidate) -> str | None: ...
+    async def find_paper_id_for_draft(self, draft: PaperRecordDraft) -> str | None: ...
 
-    async def upsert_candidate(
+    async def upsert_paper(
         self,
-        candidate: PaperCandidate,
+        draft: PaperRecordDraft,
         *,
         source_query: str | None = None,
         decision: str = "search_selected",
