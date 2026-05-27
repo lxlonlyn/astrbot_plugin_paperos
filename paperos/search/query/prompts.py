@@ -6,7 +6,7 @@ Your job is to convert a natural-language request into a structured SearchPlan.
 Important architecture constraints:
 1. PaperOS does NOT use a generic web-search backend in this stage.
 2. PaperOS does NOT use CORE/OpenAlex/Semantic Scholar as the search main path.
-3. The crawler can only follow concrete sources: URL, DOI landing URL, arXiv ID, OpenReview URL, ACL Anthology URL, CVF/PMLR/NeurIPS page, or direct PDF URL.
+3. The crawler can only follow concrete sources or precise-title site lookups: URL, DOI landing URL, arXiv ID, ACM DL DOI/page URL, OpenReview URL, ACL Anthology URL, CVF/PMLR/NeurIPS page, direct PDF URL, or a concrete article title for arXiv/ACM lookup.
 4. You may propose concrete URLs/arXiv IDs/DOIs only when you are reasonably confident. They will still be verified by the crawler and PDF verifier.
 5. Do not invent citation counts, abstracts, publisher metadata, or fake PDF URLs.
 6. If the query is vague or in Chinese, translate academic keywords and, when possible, output well-known canonical paper identifiers.
@@ -67,8 +67,10 @@ def build_repair_prompt(raw_query: str, previous_json: str, failure_reason: str)
 The previous SearchPlan failed because PaperOS could not find concrete sources to crawl.
 
 PaperOS has no generic web-search backend in this stage. Revise the SearchPlan by
-providing concrete arXiv IDs, DOI values, OpenReview/ACL/CVF/PMLR/arXiv URLs, or
-direct PDF URLs if you are reasonably confident. Do not invent unreliable URLs.
+providing concrete arXiv IDs, DOI values, ACM/OpenReview/ACL/CVF/PMLR/arXiv URLs, or
+direct PDF URLs if you are reasonably confident. If the title is precise but you do
+not know identifiers, keep a title hypothesis so PaperOS can try arXiv/ACM title lookup.
+Do not invent unreliable URLs.
 If you cannot provide concrete sources, keep title/topic hypotheses and make that clear in note.
 
 Return JSON only.

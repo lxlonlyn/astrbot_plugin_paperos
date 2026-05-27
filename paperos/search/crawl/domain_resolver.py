@@ -4,6 +4,9 @@ from astrbot.api import logger
 
 from ..models import FulltextLocation, PaperCandidate
 from .url_tools import (
+    acm_doi_from_url,
+    acm_landing_url,
+    acm_pdf_url,
     acl_pdf_url,
     arxiv_abs_url,
     arxiv_pdf_url,
@@ -67,6 +70,19 @@ class DomainResolver:
                 )
             )
 
+        acm_pdf = acm_pdf_url(url)
+        if acm_pdf:
+            out.append(
+                FulltextLocation(
+                    url=acm_pdf,
+                    source="acm_dl",
+                    kind="pdf",
+                    confidence=0.90,
+                    host_type="publisher",
+                    reason="normalized ACM DL DOI page to PDF URL",
+                )
+            )
+
         if looks_like_pdf_url(url):
             out.append(
                 FulltextLocation(
@@ -100,6 +116,16 @@ class DomainResolver:
                 landing_url=url if "/abs/" in url else arxiv_abs_url(arxiv_id),
                 fulltext_locations=self.fulltext_from_url(url, source="arxiv"),
                 source="arxiv_url",
+                raw={"source_url": url},
+            )
+        acm_doi = acm_doi_from_url(url)
+        if acm_doi:
+            return PaperCandidate(
+                title=acm_doi,
+                doi=acm_doi,
+                landing_url=acm_landing_url(acm_doi),
+                fulltext_locations=self.fulltext_from_url(url, source="acm_dl"),
+                source="acm_url",
                 raw={"source_url": url},
             )
         return PaperCandidate(

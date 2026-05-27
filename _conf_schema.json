@@ -71,6 +71,11 @@
         "description": "一次 SearchPlan 最多跟进多少个明确来源 URL/identifier",
         "default": 12
       },
+      "max_site_lookup_results": {
+        "type": "int",
+        "description": "按精确标题在已知站点（arXiv/ACM）最多取回多少个候选",
+        "default": 5
+      },
       "max_html_bytes": {
         "type": "int",
         "description": "单个 HTML 页面最大读取字节数",

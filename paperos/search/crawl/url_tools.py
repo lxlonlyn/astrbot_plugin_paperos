@@ -136,3 +136,26 @@ def acl_pdf_url(url: str) -> str | None:
     if re.match(r"^[A-Z]\d{2}-\d{4}$|^\d{4}\.[a-z-]+\.\d+$", paper_id, re.I):
         return f"https://aclanthology.org/{paper_id}.pdf"
     return None
+
+
+def acm_doi_from_url(url: str) -> str | None:
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    if "dl.acm.org" not in host:
+        return None
+    path = unquote(parsed.path).strip("/")
+    for prefix in ("doi/pdf/", "doi/abs/", "doi/fullHtml/", "doi/"):
+        if path.startswith(prefix):
+            return path[len(prefix):].strip() or None
+    return extract_doi(url)
+
+
+def acm_landing_url(doi: str) -> str:
+    return "https://dl.acm.org/doi/" + quote(doi.strip(), safe="/")
+
+
+def acm_pdf_url(url: str) -> str | None:
+    doi = acm_doi_from_url(url)
+    if not doi:
+        return None
+    return "https://dl.acm.org/doi/pdf/" + quote(doi, safe="/")

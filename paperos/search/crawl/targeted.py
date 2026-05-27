@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
+from urllib.parse import quote_plus
 
 import httpx
 from astrbot.api import logger
@@ -20,6 +22,8 @@ from .url_tools import (
     looks_like_pdf_url,
     strip_html,
 )
+
+ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 
 
 class TargetedPaperCrawler:
@@ -53,6 +57,8 @@ class TargetedPaperCrawler:
             return []
 
         candidates = self._direct_candidates(plan)
+        if len(candidates) < plan.max_candidates:
+            candidates.extend(await self._site_lookup_candidates(plan, seen=candidates))
         logger.debug(
             "[PaperOS][TargetedCrawler] start intent=%s direct_candidates=%d",
             plan.intent.value,
@@ -85,6 +91,148 @@ class TargetedPaperCrawler:
 
         return out
 
+    async def _site_lookup_candidates(
+        self,
+        plan: SearchPlan,
+        *,
+        seen: list[PaperCandidate],
+    ) -> list[PaperCandidate]:
+        """Look up precise titles on known scholarly sites.
+
+        This is intentionally not a generic search backend. It only uses titles
+        that the user or QueryAnalyzer has already made concrete, and it limits
+        each site to a handful of candidates.
+        """
+
+        out: list[PaperCandidate] = []
+        seen_keys = {self._candidate_key(candidate) for candidate in seen}
+        titles = self._lookup_titles(plan)
+        for title in titles:
+            for candidate in await self._lookup_arxiv_title(title):
+                self._append_unique(out, seen_keys, candidate)
+            for candidate in await self._lookup_acm_title(title):
+                self._append_unique(out, seen_keys, candidate)
+            if len(out) >= plan.max_candidates:
+                break
+        if out:
+            logger.debug("[PaperOS][TargetedCrawler] site_lookup titles=%d candidates=%d", len(titles), len(out))
+        return out[: plan.max_candidates]
+
+    def _lookup_titles(self, plan: SearchPlan) -> list[str]:
+        titles: list[str] = []
+        for hyp in plan.hypotheses:
+            if hyp.kind not in {
+                HypothesisKind.TITLE,
+                HypothesisKind.FUZZY_TITLE,
+                HypothesisKind.AUTHOR_VENUE_YEAR,
+            }:
+                continue
+            for title in (hyp.translated_title, hyp.title):
+                clean = strip_html(title or "")
+                if len(clean) >= 8 and clean.lower() not in {item.lower() for item in titles}:
+                    titles.append(clean)
+        return titles[: self.crawler_cfg.max_known_urls]
+
+    async def _lookup_arxiv_title(self, title: str) -> list[PaperCandidate]:
+        query = quote_plus(f'ti:"{title}"')
+        url = (
+            "https://export.arxiv.org/api/query"
+            f"?search_query={query}&start=0&max_results={self.crawler_cfg.max_site_lookup_results}"
+        )
+        try:
+            resp = await self._client.get(url, headers={"Accept": "application/atom+xml,*/*;q=0.5"})
+            if resp.status_code >= 400:
+                logger.debug("[PaperOS][TargetedCrawler] arxiv_lookup_skip status=%d title=%s", resp.status_code, title)
+                return []
+            return self._parse_arxiv_feed(resp.text, query_title=title)
+        except (httpx.HTTPError, ET.ParseError) as exc:
+            logger.debug("[PaperOS][TargetedCrawler] arxiv_lookup_failed title=%s error=%r", title, exc)
+            return []
+
+    def _parse_arxiv_feed(self, text: str, *, query_title: str) -> list[PaperCandidate]:
+        root = ET.fromstring(text)
+        out: list[PaperCandidate] = []
+        for entry in root.findall("atom:entry", ATOM_NS):
+            entry_title = self._xml_text(entry, "atom:title")
+            arxiv_id = extract_arxiv_id(self._xml_text(entry, "atom:id"))
+            if not entry_title or not arxiv_id:
+                continue
+            if not self._is_plausible_title_match(query_title, entry_title):
+                continue
+            published = self._xml_text(entry, "atom:published")
+            authors = [
+                self._xml_text(author, "atom:name")
+                for author in entry.findall("atom:author", ATOM_NS)
+                if self._xml_text(author, "atom:name")
+            ]
+            candidate = self.domain_resolver.candidate_from_known_url(
+                f"https://arxiv.org/abs/{arxiv_id}",
+                source="arxiv_title_lookup",
+            )
+            if not candidate:
+                continue
+            candidate.title = self._clean_title(entry_title)
+            candidate.authors = authors
+            candidate.abstract = self._xml_text(entry, "atom:summary") or None
+            candidate.year = int(published[:4]) if published[:4].isdigit() else None
+            candidate.source = "arxiv_title_lookup"
+            candidate.raw["query_title"] = query_title
+            out.append(candidate)
+        return out
+
+    async def _lookup_acm_title(self, title: str) -> list[PaperCandidate]:
+        url = (
+            "https://dl.acm.org/action/doSearch"
+            f"?AllField={quote_plus(title)}&pageSize={self.crawler_cfg.max_site_lookup_results}"
+        )
+        html_data = await self._fetch_html(url)
+        if not html_data:
+            return []
+
+        out: list[PaperCandidate] = []
+        seen_links: set[str] = set()
+        for link in html_data.links:
+            if len(out) >= self.crawler_cfg.max_site_lookup_results:
+                break
+            if "dl.acm.org/doi/" not in link:
+                continue
+            link = canonical_url(link)
+            if link in seen_links:
+                continue
+            seen_links.add(link)
+            candidate = self.domain_resolver.candidate_from_known_url(link, source="acm_title_lookup")
+            if not candidate:
+                continue
+            candidate.source = "acm_title_lookup"
+            candidate.raw["query_title"] = title
+            await self._enrich_candidate(candidate)
+            if self._is_plausible_title_match(title, candidate.title):
+                out.append(candidate)
+        return out
+
+    def _xml_text(self, item: ET.Element, path: str) -> str:
+        found = item.find(path, ATOM_NS)
+        return re.sub(r"\s+", " ", (found.text or "")).strip() if found is not None else ""
+
+    def _append_unique(
+        self,
+        out: list[PaperCandidate],
+        seen_keys: set[str],
+        candidate: PaperCandidate,
+    ) -> None:
+        key = self._candidate_key(candidate)
+        if key not in seen_keys:
+            seen_keys.add(key)
+            out.append(candidate)
+
+    def _is_plausible_title_match(self, expected: str, actual: str) -> bool:
+        expected_tokens = set(self._title_tokens(expected))
+        actual_tokens = set(self._title_tokens(actual))
+        if not expected_tokens or not actual_tokens:
+            return False
+        overlap = len(expected_tokens & actual_tokens) / max(1, len(expected_tokens))
+        return overlap >= 0.72
+
     def _candidates_from_hypothesis(self, hyp) -> list[PaperCandidate]:
         out: list[PaperCandidate] = []
 
@@ -99,16 +247,23 @@ class TargetedPaperCrawler:
 
         if hyp.doi:
             doi = extract_doi(hyp.doi) or hyp.doi.strip()
-            cand = PaperCandidate(
-                title=hyp.title or hyp.translated_title or doi,
-                authors=list(hyp.authors),
-                year=hyp.year,
-                venue=hyp.venue,
-                doi=doi,
-                landing_url=doi_landing_url(doi),
-                source="llm_doi",
-                raw={"hypothesis_note": hyp.note},
-            )
+            if doi.lower().startswith("10.1145/"):
+                cand = self.domain_resolver.candidate_from_known_url(
+                    f"https://dl.acm.org/doi/{doi}",
+                    source="llm_acm_doi",
+                ) or PaperCandidate(title=hyp.title or hyp.translated_title or doi, doi=doi)
+            else:
+                cand = PaperCandidate(
+                    title=hyp.title or hyp.translated_title or doi,
+                    authors=list(hyp.authors),
+                    year=hyp.year,
+                    venue=hyp.venue,
+                    doi=doi,
+                    landing_url=doi_landing_url(doi),
+                    source="llm_doi",
+                    raw={"hypothesis_note": hyp.note},
+                )
+            self._apply_hypothesis_metadata(cand, hyp)
             out.append(cand)
 
         if hyp.url and looks_like_http_url(hyp.url):
@@ -289,6 +444,10 @@ class TargetedPaperCrawler:
             if sep.lower() in title.lower():
                 title = re.split(re.escape(sep), title, flags=re.I)[0].strip()
         return title
+
+    def _title_tokens(self, title: str) -> list[str]:
+        normalized = re.sub(r"[^\w\s]", " ", strip_html(title).lower())
+        return [token for token in normalized.split() if len(token) > 2]
 
     def _candidate_key(self, candidate: PaperCandidate) -> str:
         if candidate.doi:

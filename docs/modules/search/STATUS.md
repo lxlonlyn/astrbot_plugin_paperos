@@ -5,7 +5,8 @@
 - LLM query analyzer。
 - fallback query analyzer：可从原始输入识别 DOI、arXiv ID、URL，并为标题/主题生成基础假设。
 - targeted crawler：只跟进 SearchPlan 中已有的明确来源，不做通用网页搜索。
-- 已知站点 URL 归一化：arXiv、OpenReview、ACL Anthology、直接 PDF URL。
+- 已知站点 URL 归一化：arXiv、ACM DL、OpenReview、ACL Anthology、直接 PDF URL。
+- 精确标题站点 lookup：arXiv API 与 ACM DL 站内检索，小结果集，面向具体文章名而非大范围爬取。
 - 候选 scoring。
 - search-stage dedup。
 - disambiguation。
@@ -39,6 +40,8 @@ User query
   -> PaperSearchResult
 ```
 
-`FulltextStatus.VERIFIED_PDF` 表示候选 URL 已下载到 `plugin_data/astrbot_plugin_paperos/searcher/fulltext/`，并通过 PDF 文件头和 `pypdf` 页数校验。长期入库、对象归档、解析任务排队应由 storage/library 层完成。
+`FulltextStatus.VERIFIED_PDF` 表示候选 URL 已下载到 AstrBot 插件数据目录
+`get_astrbot_data_path()/plugin_data/astrbot_plugin_paperos/searcher/fulltext/`，
+并通过 PDF 文件头、大小限制、SHA-256 落盘去重和 `pypdf` 页数校验。长期入库、对象归档、解析任务排队应由 storage/library 层完成。
 
 Legacy CORE provider 代码仍保留在 `paperos.search.providers`、`core_client.py` 等文件中，但当前 `PaperSearchService` 不会把它们接入默认搜索流程。

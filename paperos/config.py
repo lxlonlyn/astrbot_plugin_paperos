@@ -31,6 +31,7 @@ class CrawlerConfig:
     enabled: bool = True
     timeout_seconds: int = 25
     max_known_urls: int = 12
+    max_site_lookup_results: int = 5
     max_html_bytes: int = 2 * 1024 * 1024
     max_pdf_links_per_page: int = 8
     user_agent: str = (
@@ -157,6 +158,9 @@ def load_config(raw: Mapping[str, Any]) -> PaperOSConfig:
                 crawler.get("timeout_seconds"), 25, minimum=3, maximum=120
             ),
             max_known_urls=_int(crawler.get("max_known_urls"), 12, minimum=1, maximum=50),
+            max_site_lookup_results=_int(
+                crawler.get("max_site_lookup_results"), 5, minimum=1, maximum=10
+            ),
             max_html_bytes=_int(
                 crawler.get("max_html_bytes"),
                 2 * 1024 * 1024,
