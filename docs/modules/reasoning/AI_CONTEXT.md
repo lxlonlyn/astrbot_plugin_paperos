@@ -1,10 +1,10 @@
 # PaperOS Reasoning：AI Context
 
-Reasoning 是未来用于论文理解、claim 组织、实验记录和科研记忆的模块。
+Reasoning 不再作为论文数据链路的独立顶层模块。论文理解、claim 组织、idea generation、实验记录和科研记忆应优先作为 `rag` 的上层 analysis workflow。
 
 ## 职责
 
-- 基于 RAG 上下文进行论文问答。
+- 基于 RAG 上下文进行论文问答和分析。
 - 抽取 method / claim / experiment / limitation / related work。
 - 组织长期科研笔记。
 - 与用户项目上下文交互。
@@ -25,4 +25,4 @@ Reasoning 是未来用于论文理解、claim 组织、实验记录和科研记�
 - `paper_concept_edges`
 - `experiment_notes`
 
-这些不应阻塞 storage/ingest 第一阶段。
+这些不应阻塞 search/storage/rag 的核心数据链路。

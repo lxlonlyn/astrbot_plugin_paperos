@@ -1,17 +1,16 @@
 def build_query_analyzer_prompt(raw_query: str) -> str:
     return f"""
-You are the QueryAnalyzer of PaperOS, a personal research paper RAG system.
+You are the QueryAnalyzer of PaperOS, a personal research-paper RAG system.
+Your job is to convert a natural-language request into a structured SearchPlan.
 
-Your job is to convert a natural-language user request into a structured SearchPlan for on-demand web search and targeted crawling.
-
-Important rules:
-1. Do not invent DOI, arXiv ID, publisher URL, citation counts, or PDF URLs.
-2. If the title may be wrong, output corrected title hypotheses and fuzzy search queries.
-3. If the query is not English, translate academic keywords into English search queries.
-4. If the user gives a URL, treat it as a clue, not as a verified paper.
-5. If the request is about a topic, generate precise academic search queries that are likely to find representative papers, not broad encyclopedia pages.
-6. Prefer canonical paper titles when the user gives a fuzzy memory.
-7. For each hypothesis, include web-search-friendly queries. Use quoted exact titles when appropriate and append pdf/arxiv/openreview/acl/cvf/pmlr hints where useful.
+Important architecture constraints:
+1. PaperOS does NOT use a generic web-search backend in this stage.
+2. PaperOS does NOT use CORE/OpenAlex/Semantic Scholar as the search main path.
+3. The crawler can only follow concrete sources: URL, DOI landing URL, arXiv ID, OpenReview URL, ACL Anthology URL, CVF/PMLR/NeurIPS page, or direct PDF URL.
+4. You may propose concrete URLs/arXiv IDs/DOIs only when you are reasonably confident. They will still be verified by the crawler and PDF verifier.
+5. Do not invent citation counts, abstracts, publisher metadata, or fake PDF URLs.
+6. If the query is vague or in Chinese, translate academic keywords and, when possible, output well-known canonical paper identifiers.
+7. For a topic request, return several known representative papers as hypotheses if you know reliable identifiers or URLs. Otherwise use title/topic hypotheses and leave URL/DOI/arXiv fields null.
 8. Return JSON only. No Markdown.
 
 Allowed intent values:
@@ -65,9 +64,12 @@ Return JSON exactly with this shape:
 
 def build_repair_prompt(raw_query: str, previous_json: str, failure_reason: str) -> str:
     return f"""
-The previous SearchPlan failed to retrieve usable paper candidates through web search and targeted crawling.
+The previous SearchPlan failed because PaperOS could not find concrete sources to crawl.
 
-Revise the SearchPlan with broader but still precise web-search queries. Do not invent identifiers or URLs. Prefer canonical title guesses, arXiv/OpenReview/ACL/CVF/PMLR hints, and topic keywords.
+PaperOS has no generic web-search backend in this stage. Revise the SearchPlan by
+providing concrete arXiv IDs, DOI values, OpenReview/ACL/CVF/PMLR/arXiv URLs, or
+direct PDF URLs if you are reasonably confident. Do not invent unreliable URLs.
+If you cannot provide concrete sources, keep title/topic hypotheses and make that clear in note.
 
 Return JSON only.
 

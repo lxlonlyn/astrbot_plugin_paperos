@@ -10,17 +10,22 @@
 
 - 从 AstrBot 命令或 LLM tool 接收自然语言 query。
 - 用 AstrBot 已配置的大模型把 query 解析成结构化 `SearchPlan`。
-- 用 CORE API 搜索候选论文 metadata。
+- 在 LLM 不可用或解析失败时，用 fallback analyzer 识别 DOI、arXiv ID、URL、标题或主题。
+- 用 targeted crawler 跟进 SearchPlan 中已有的明确来源。
+- 对 arXiv、OpenReview、ACL Anthology、直接 PDF URL 等已知来源做 URL 归一化。
 - 对候选做 scoring、dedup、disambiguation。
-- 从候选中提取 PDF / landing URL。
-- 对全文候选 URL 做轻量验证，判断 `verified_pdf` / `html_fulltext` / `landing_only` / `requires_auth` / `failed` / `invalid`。
+- 从 HTML citation meta、已知站点规则或直接链接中提取 PDF / landing URL。
+- 下载候选 PDF 到 searcher 临时目录，并用文件头和 `pypdf` 做严格验证。
+- 标记 `verified_pdf` / `no_open_access` / `requires_auth` / `failed` / `invalid` 等全文状态。
 - 返回 `PaperSearchResult`，由 presenter 格式化为聊天输出。
 
 当前 searcher 不实现：
 
 - SQLite / LanceDB / 本地数据库入库。
-- 自动下载 PDF 到本地文件系统并记录路径。
+- 将 searcher 临时 PDF 归档为长期 storage object。
 - PDF 解析、chunk、embedding、RAG。
+- 通用网页搜索后端。
+- CORE/OpenAlex/Semantic Scholar 等学术 API 默认主链路。
 - 绕过出版社权限、登录、paywall、验证码。
 
 ## 稳定入口
@@ -49,6 +54,8 @@ result = await search_service.find_paper(raw_query, event=event)
 - `CoreMetadataProvider`
 - `AstrBotLLMQueryAnalyzer`
 - `PaperSearchPipeline`
+- `TargetedPaperCrawler`
+- `DomainResolver`
 - `FulltextVerifier`
 
 除非正在修改 searcher 内部。
@@ -64,11 +71,9 @@ PaperSearchPipeline.run()
   ↓
 AstrBotLLMQueryAnalyzer.analyze()
   ↓
-CandidateResolver.resolve()
+TargetedPaperCrawler.discover()
   ↓
-CoreMetadataProvider.search()
-  ↓
-CoreClient.search_works()
+DomainResolver.fulltext_from_url()
   ↓
 score_candidates()
   ↓
@@ -76,18 +81,15 @@ PaperDeduplicator.dedup()
   ↓
 PaperDisambiguator.select()
   ↓
-FulltextResolver.resolve()
-  ↓
-FulltextProvider.resolve()
-  ↓
 FulltextVerifier.verify()
   ↓
 PaperSearchResult
 ```
 
-## 与 storage/ingest 的关系
+## 与 storage / rag 的关系
 
-- search 返回候选和 fulltext URL。
-- ingest 消费 search 结果，决定是否入库。
+- search 返回候选、fulltext 状态和 searcher 临时 PDF 路径。
+- 上层 command/workflow 或 library facade 消费 search 结果，决定是否入库。
 - storage 负责 paper/version/object/job 的长期状态。
-- downloader 负责把 verified PDF URL 下载成本地 object。
+- storage object store 负责把 verified PDF 从临时路径归档为长期 object。
+- rag 负责后续 PDF 解析、chunk、embedding、index 和本地分析。

@@ -10,13 +10,14 @@ _DOI_RE = re.compile(r"\b(10\.\d{4,9}/[-._;()/:A-Za-z0-9]+)", re.I)
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
-def strip_html(text: str) -> str:
+def strip_html(text: str | None) -> str:
     return re.sub(r"\s+", " ", unescape(_TAG_RE.sub(" ", text or ""))).strip()
 
 
-def clean_duckduckgo_url(url: str) -> str:
+def clean_redirect_url(url: str) -> str:
     parsed = urlparse(url)
-    if "duckduckgo.com" in parsed.netloc and parsed.path.startswith("/l/"):
+    host = parsed.netloc.lower()
+    if "duckduckgo.com" in host and parsed.path.startswith("/l/"):
         qs = parse_qs(parsed.query)
         if qs.get("uddg"):
             return unquote(qs["uddg"][0])
@@ -26,12 +27,11 @@ def clean_duckduckgo_url(url: str) -> str:
 def canonical_url(url: str, *, base_url: str | None = None) -> str:
     if base_url:
         url = urljoin(base_url, url)
-    url = unescape(url.strip())
-    url = clean_duckduckgo_url(url)
+    url = clean_redirect_url(unescape(url.strip()))
     parsed = urlparse(url)
     if not parsed.scheme:
         return url
-    # Drop fragments. They do not affect PDF identity and hurt dedup.
+    # Drop fragments; they hurt dedup and do not affect PDF identity.
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, parsed.query, ""))
 
 
@@ -47,6 +47,12 @@ def looks_like_pdf_url(url: str | None) -> bool:
     return parsed.path.endswith(".pdf") or "/pdf/" in parsed.path or parsed.path.endswith("/pdf")
 
 
+def extract_urls(text: str | None) -> list[str]:
+    if not text:
+        return []
+    return [m.group(0).rstrip(".,;)\"]'") for m in re.finditer(r"https?://\S+", text, re.I)]
+
+
 def extract_doi(text: str | None) -> str | None:
     if not text:
         return None
@@ -58,7 +64,6 @@ def extract_arxiv_id(text: str | None) -> str | None:
     if not text:
         return None
     decoded = unquote(text)
-    # Try common URL forms first.
     for marker in ("/abs/", "/pdf/"):
         if marker in decoded:
             after = decoded.split(marker, 1)[1]
@@ -66,22 +71,14 @@ def extract_arxiv_id(text: str | None) -> str | None:
             if after.endswith(".pdf"):
                 after = after[:-4]
             if after:
-                return after
+                return normalize_arxiv_id(after)
     match = _ARXIV_NEW_RE.search(decoded)
     if match:
-        return match.group("id")
+        return normalize_arxiv_id(match.group("id"))
     match = _ARXIV_OLD_RE.search(decoded)
     if match:
-        return match.group("id")
+        return normalize_arxiv_id(match.group("id"))
     return None
-
-
-def arxiv_pdf_url(arxiv_id: str) -> str:
-    arxiv_id = arxiv_id.strip()
-    if arxiv_id.endswith(".pdf"):
-        arxiv_id = arxiv_id[:-4]
-    # Do not quote slash for old-style ids such as cs/9901002.
-    return "https://arxiv.org/pdf/" + quote(arxiv_id, safe="/") + ".pdf"
 
 
 def normalize_arxiv_id(arxiv_id: str | None) -> str | None:
@@ -93,6 +90,20 @@ def normalize_arxiv_id(arxiv_id: str | None) -> str | None:
     if arxiv_id.endswith(".pdf"):
         arxiv_id = arxiv_id[:-4]
     return arxiv_id or None
+
+
+def arxiv_abs_url(arxiv_id: str) -> str:
+    arxiv_id = normalize_arxiv_id(arxiv_id) or arxiv_id
+    return "https://arxiv.org/abs/" + quote(arxiv_id, safe="/")
+
+
+def arxiv_pdf_url(arxiv_id: str) -> str:
+    arxiv_id = normalize_arxiv_id(arxiv_id) or arxiv_id
+    return "https://arxiv.org/pdf/" + quote(arxiv_id, safe="/") + ".pdf"
+
+
+def doi_landing_url(doi: str) -> str:
+    return "https://doi.org/" + doi.strip()
 
 
 def host_of(url: str | None) -> str:

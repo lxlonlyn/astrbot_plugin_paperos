@@ -24,28 +24,18 @@ text = PaperSearchPresenter(cfg).format_search_result(result)
 
 ## 我想新增一个搜索 API
 
-实现：
+先确认它是否仍符合 search 边界：只负责联网获取有效 paper，不负责入库、解析、embedding 或回答。
 
-```python
-MetadataProvider.search(plan) -> list[PaperCandidate]
-```
-
-然后在 `PaperSearchService` 组装。
+当前默认主链路不使用通用 web search 后端，也不使用 CORE/OpenAlex/Semantic Scholar 主链路。新增来源应优先作为 `TargetedPaperCrawler` / `DomainResolver` 的站点规则，或作为未来可选 metadata enrichment，不要扩大 search 的顶层职责。
 
 ## 我想新增一个 PDF/OA 来源
 
-实现：
-
-```python
-FulltextProvider.resolve(paper) -> list[FulltextLocation]
-```
-
-然后在 `PaperSearchService` 组装。
+把站点 URL 归一化和 PDF candidate 生成放在 `search/crawl/` 内部，例如 `DomainResolver` 或 targeted crawler 的 HTML 提取逻辑。
 
 ## 我想下载 PDF
 
-不要放进 search provider。应由 future `paperos/ingest/download.py` 或 downloader service 处理。
+这属于 search 的在线获取职责。下载后必须由 `FulltextVerifier` 严格验证，返回 searcher 临时本地路径。长期归档交给 storage object store。
 
 ## 我想存数据库
 
-不要放进 search pipeline。应调用 storage repository 或 ingest service。
+不要放进 search pipeline。应在上层 command/facade 中把 `PaperCandidate` 转成 `storage.PaperRecordDraft` 后调用 storage repository。

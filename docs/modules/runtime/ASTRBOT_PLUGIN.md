@@ -10,7 +10,7 @@
 - 注册 command。
 - 注册 LLM tool。
 - 调 presenter 输出用户可读结果。
-- 生命周期中关闭 HTTP client / storage connection。
+- 生命周期中关闭 HTTP client。
 
 ## main.py 不应负责
 
@@ -21,6 +21,8 @@
 
 ## 推荐结构
 
+当前 `main.py` 只初始化 search service 和 presenter。storage 代码已经存在，但尚未接入插件生命周期；下面是下一步接入 storage 时的推荐结构。
+
 ```python
 class PaperOSPlugin(Star):
     def __init__(self, context, config):
@@ -30,7 +32,8 @@ class PaperOSPlugin(Star):
         self.storage = None
 
     async def initialize(self):
-        if self.cfg.storage.enabled:
+        storage_cfg = getattr(self.cfg, "storage", None)
+        if storage_cfg and storage_cfg.enabled:
             self.storage = await create_storage_context(self.cfg, plugin_name=self.name)
 
     async def terminate(self):

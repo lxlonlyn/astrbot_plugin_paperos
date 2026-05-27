@@ -1,26 +1,26 @@
 from __future__ import annotations
 
-from urllib.parse import urlparse
-
 from astrbot.api import logger
 
 from ..models import FulltextLocation, PaperCandidate
 from .url_tools import (
     acl_pdf_url,
+    arxiv_abs_url,
     arxiv_pdf_url,
     canonical_url,
     extract_arxiv_id,
     host_of,
+    looks_like_http_url,
     looks_like_pdf_url,
     openreview_pdf_url,
 )
 
 
 class DomainResolver:
-    """Domain-specific URL normalizer used by targeted crawler.
+    """Domain-specific URL normalizer used by the targeted crawler.
 
-    This layer is deliberately small. It only creates fulltext candidates; the
-    verifier still decides whether a candidate is actually a PDF.
+    This layer never decides that a URL is a valid paper. It only creates
+    fulltext candidates. FulltextVerifier is the authority for PDF validity.
     """
 
     def fulltext_from_url(self, url: str, *, source: str = "domain") -> list[FulltextLocation]:
@@ -50,7 +50,7 @@ class DomainResolver:
                     kind="pdf",
                     confidence=0.94,
                     host_type="conference_openreview",
-                    reason="normalized OpenReview forum URL to PDF endpoint",
+                    reason="normalized OpenReview URL to PDF endpoint",
                 )
             )
 
@@ -63,7 +63,7 @@ class DomainResolver:
                     kind="pdf",
                     confidence=0.93,
                     host_type="publisher_oa",
-                    reason="normalized ACL Anthology paper URL to PDF URL",
+                    reason="normalized ACL Anthology URL to PDF URL",
                 )
             )
 
@@ -78,7 +78,6 @@ class DomainResolver:
                 )
             )
 
-        # Preserve order but deduplicate URLs.
         deduped: list[FulltextLocation] = []
         seen: set[str] = set()
         for loc in sorted(out, key=lambda item: item.confidence, reverse=True):
@@ -89,26 +88,25 @@ class DomainResolver:
             logger.debug("[PaperOS][DomainResolver] url=%s locations=%d", url, len(deduped))
         return deduped
 
-    def candidate_from_known_url(self, url: str) -> PaperCandidate | None:
+    def candidate_from_known_url(self, url: str, *, source: str = "known_url") -> PaperCandidate | None:
+        if not looks_like_http_url(url):
+            return None
+        url = canonical_url(url)
         arxiv_id = extract_arxiv_id(url)
         if arxiv_id and "arxiv" in url.lower():
             return PaperCandidate(
                 title=f"arXiv:{arxiv_id}",
                 arxiv_id=arxiv_id,
-                landing_url=url if "/abs/" in url else f"https://arxiv.org/abs/{arxiv_id}",
+                landing_url=url if "/abs/" in url else arxiv_abs_url(arxiv_id),
                 fulltext_locations=self.fulltext_from_url(url, source="arxiv"),
                 source="arxiv_url",
                 raw={"source_url": url},
             )
-        parsed = urlparse(url)
-        if parsed.scheme in {"http", "https"}:
-            locations = self.fulltext_from_url(url, source="known_url")
-            if locations:
-                return PaperCandidate(
-                    title=url,
-                    landing_url=url,
-                    fulltext_locations=locations,
-                    source="known_url",
-                    raw={"source_url": url},
-                )
-        return None
+        return PaperCandidate(
+            title=url,
+            landing_url=url,
+            download_url=None,
+            fulltext_locations=self.fulltext_from_url(url, source=source),
+            source=source,
+            raw={"source_url": url},
+        )

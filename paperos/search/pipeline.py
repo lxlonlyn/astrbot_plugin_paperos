@@ -13,7 +13,7 @@ from .resolve.scoring import score_candidates
 
 
 class PaperSearchPipeline:
-    """Stage-by-stage orchestration for LLM + web + targeted crawler search."""
+    """Orchestrates LLM source proposal -> targeted crawl -> PDF verification."""
 
     def __init__(
         self,
@@ -33,9 +33,9 @@ class PaperSearchPipeline:
         self.verifier = verifier
 
     async def run(self, raw_query: str, *, event=None, need_fulltext: bool = True) -> PaperSearchResult:
-        if not self.cfg.web_search.enabled and not self.cfg.crawler.enabled:
-            logger.debug("[PaperOS][Pipeline] aborted: web_search and crawler disabled")
-            return PaperSearchResult(status="disabled", message="web_search and crawler disabled")
+        if not self.cfg.crawler.enabled:
+            logger.debug("[PaperOS][Pipeline] aborted: crawler disabled")
+            return PaperSearchResult(status="disabled", message="crawler disabled")
 
         logger.debug("[PaperOS][Pipeline] start raw_query=%r need_fulltext=%s", raw_query, need_fulltext)
         plan = await self.query_analyzer.analyze(raw_query, event=event)
@@ -56,20 +56,30 @@ class PaperSearchPipeline:
         for round_idx in range(repair_rounds):
             if candidates:
                 break
-            logger.debug("[PaperOS][Pipeline] stage=repair round=%d reason=no candidates", round_idx + 1)
+            logger.debug("[PaperOS][Pipeline] stage=repair round=%d reason=no concrete sources", round_idx + 1)
             plan = await self.query_analyzer.repair(
                 raw_query,
                 previous_plan=plan,
-                failure_reason="web search and targeted crawler returned zero candidates",
+                failure_reason=(
+                    "The crawler found no concrete source. Provide arXiv IDs, DOI, "
+                    "OpenReview/ACL/CVF/PMLR/arXiv URLs, or direct PDF URLs if you know them."
+                ),
                 event=event,
             )
             candidates = await self._discover_score_dedup(plan)
-            logger.debug("[PaperOS][Pipeline] stage=discover_after_repair %s", self._summarize_candidates(candidates))
+            logger.debug(
+                "[PaperOS][Pipeline] stage=discover_after_repair %s",
+                self._summarize_candidates(candidates),
+            )
 
         if not candidates:
             return PaperSearchResult(
                 status="not_found",
-                message="web search and targeted crawler returned zero candidates",
+                message=(
+                    "LLM did not produce usable concrete paper sources. "
+                    "This stage has no generic web-search backend; provide a URL/arXiv ID/DOI, "
+                    "or use a model/provider that can propose such sources."
+                ),
                 plan=plan,
             )
 
@@ -86,10 +96,10 @@ class PaperSearchPipeline:
                 )
                 return PaperSearchResult(
                     status="not_found",
-                    message="found paper candidates, but no candidate URL was verified as PDF",
+                    message="found concrete paper candidates, but no candidate URL was verified as PDF",
                     plan=plan,
                     candidates=candidates,
-                    selected=[],
+                    selected=selected,
                 )
 
         status = "selected" if selected else "ambiguous"
@@ -140,14 +150,13 @@ class PaperSearchPipeline:
 
     def _summarize_plan(self, plan: SearchPlan) -> str:
         kinds = [h.kind.value for h in plan.hypotheses[:5]]
-        sample_queries: list[str] = []
-        for hyp in plan.hypotheses[:3]:
-            sample_queries.extend(hyp.search_queries[:2])
-        sample_queries = [self._short(q, 60) for q in sample_queries[:4]]
+        direct = 0
+        for hyp in plan.hypotheses:
+            direct += int(bool(hyp.url)) + int(bool(hyp.arxiv_id)) + int(bool(hyp.doi))
         return (
             f"intent={plan.intent.value}, lang={plan.language}, hypotheses={len(plan.hypotheses)} {kinds}, "
-            f"max_candidates={plan.max_candidates}, final_limit={plan.final_limit}, "
-            f"need_fulltext={plan.need_fulltext}, queries={sample_queries}"
+            f"direct_sources={direct}, max_candidates={plan.max_candidates}, "
+            f"final_limit={plan.final_limit}, need_fulltext={plan.need_fulltext}"
         )
 
     def _summarize_candidates(self, candidates: list[PaperCandidate], *, limit: int = 3) -> str:

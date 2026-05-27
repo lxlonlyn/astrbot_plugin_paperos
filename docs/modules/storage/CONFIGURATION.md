@@ -93,6 +93,8 @@ AstrBot/
 
 ## 是否需要外置数据库
 
-第一阶段不需要。目标规模 5k 篇论文时，SQLite + 本地对象文件 + API embedding provider 足够作为默认后端。
+第一阶段不需要。目标规模 5k 篇论文时，SQLite + 本地对象文件足够作为 storage 默认后端。
+
+API embedding provider 属于 RAG 配置，不属于 storage 配置。storage 只保存 embedding/vector/index 的持久化结果或状态。
 
 后续如果需要多人协作、远程同步、跨设备写入，再考虑 PostgreSQL / S3 / Qdrant / Neo4j 等外部服务。

@@ -20,20 +20,19 @@ class QueryAnalyzerConfig:
 
 
 @dataclass(frozen=True)
-class WebSearchConfig:
-    """Configuration for on-demand web search.
+class CrawlerConfig:
+    """On-demand URL/identifier crawler configuration.
 
-    This is not an academic metadata API. It only returns web pages that the
-    targeted crawler may inspect. Keep defaults conservative because PaperOS is
-    a personal RAG plugin, not a large crawler.
+    This is not a web-search backend. The crawler only follows concrete
+    sources produced by QueryAnalyzer, such as arXiv IDs, DOI landing URLs,
+    OpenReview URLs, ACL Anthology URLs, and direct PDF URLs.
     """
 
     enabled: bool = True
-    backend: str = "duckduckgo_html"
-    endpoint: str = "https://duckduckgo.com/html/"
-    timeout_seconds: int = 20
-    max_results_per_query: int = 5
-    max_total_results: int = 20
+    timeout_seconds: int = 25
+    max_known_urls: int = 12
+    max_html_bytes: int = 2 * 1024 * 1024
+    max_pdf_links_per_page: int = 8
     user_agent: str = (
         "Mozilla/5.0 (compatible; PaperOS/0.2; "
         "+https://github.com/lxlonlyn/astrbot_plugin_paperos)"
@@ -41,24 +40,12 @@ class WebSearchConfig:
 
 
 @dataclass(frozen=True)
-class CrawlerConfig:
-    enabled: bool = True
-    timeout_seconds: int = 25
-    max_pages: int = 20
-    max_html_bytes: int = 2 * 1024 * 1024
-    max_pdf_links_per_page: int = 8
-    # Keep legacy academic APIs outside the default path. They may be used later
-    # as metadata enrichment, but should not block PDF acquisition.
-    academic_api_fallback: bool = False
-
-
-@dataclass(frozen=True)
 class CoreAPIConfig:
     """Legacy compatibility only.
 
-    CORE is no longer part of the default search/download path. Keeping the
-    config object avoids breaking old provider modules while the codebase is
-    migrated incrementally.
+    CORE/OpenAlex/S2-style academic APIs are intentionally outside the search
+    main path. Keep this config object only so old files do not break during
+    incremental migration.
     """
 
     enabled: bool = False
@@ -85,7 +72,6 @@ class SearchPolicyConfig:
 class PaperOSConfig:
     general: GeneralConfig
     query_analyzer: QueryAnalyzerConfig
-    web_search: WebSearchConfig
     crawler: CrawlerConfig
     search_policy: SearchPolicyConfig
     core_api: CoreAPIConfig
@@ -104,7 +90,13 @@ def _bool(value: Any, default: bool) -> bool:
     return bool(value)
 
 
-def _int(value: Any, default: int, *, minimum: int | None = None, maximum: int | None = None) -> int:
+def _int(
+    value: Any,
+    default: int,
+    *,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
     try:
         out = int(value)
     except Exception:
@@ -116,7 +108,13 @@ def _int(value: Any, default: int, *, minimum: int | None = None, maximum: int |
     return out
 
 
-def _float(value: Any, default: float, *, minimum: float | None = None, maximum: float | None = None) -> float:
+def _float(
+    value: Any,
+    default: float,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float:
     try:
         out = float(value)
     except Exception:
@@ -133,7 +131,6 @@ def load_config(raw: Mapping[str, Any]) -> PaperOSConfig:
 
     general = _section(raw, "general")
     query_analyzer = _section(raw, "query_analyzer")
-    web_search = _section(raw, "web_search")
     crawler = _section(raw, "crawler")
     core_api = _section(raw, "core_api")
     search_policy = _section(raw, "search_policy")
@@ -147,43 +144,64 @@ def load_config(raw: Mapping[str, Any]) -> PaperOSConfig:
         query_analyzer=QueryAnalyzerConfig(
             enabled=_bool(query_analyzer.get("enabled"), True),
             provider_id=str(query_analyzer.get("provider_id", "") or ""),
-            max_repair_rounds=_int(query_analyzer.get("max_repair_rounds"), 1, minimum=0, maximum=3),
-            max_hypotheses=_int(query_analyzer.get("max_hypotheses"), 6, minimum=1, maximum=12),
-        ),
-        web_search=WebSearchConfig(
-            enabled=_bool(web_search.get("enabled"), True),
-            backend=str(web_search.get("backend", "duckduckgo_html") or "duckduckgo_html"),
-            endpoint=str(web_search.get("endpoint", "https://duckduckgo.com/html/") or "https://duckduckgo.com/html/"),
-            timeout_seconds=_int(web_search.get("timeout_seconds"), 20, minimum=3, maximum=120),
-            max_results_per_query=_int(web_search.get("max_results_per_query"), 5, minimum=1, maximum=20),
-            max_total_results=_int(web_search.get("max_total_results"), 20, minimum=1, maximum=80),
-            user_agent=str(web_search.get("user_agent", WebSearchConfig.user_agent) or WebSearchConfig.user_agent),
+            max_repair_rounds=_int(
+                query_analyzer.get("max_repair_rounds"), 1, minimum=0, maximum=3
+            ),
+            max_hypotheses=_int(
+                query_analyzer.get("max_hypotheses"), 6, minimum=1, maximum=12
+            ),
         ),
         crawler=CrawlerConfig(
             enabled=_bool(crawler.get("enabled"), True),
-            timeout_seconds=_int(crawler.get("timeout_seconds"), 25, minimum=3, maximum=120),
-            max_pages=_int(crawler.get("max_pages"), 20, minimum=1, maximum=80),
-            max_html_bytes=_int(crawler.get("max_html_bytes"), 2 * 1024 * 1024, minimum=64 * 1024, maximum=20 * 1024 * 1024),
-            max_pdf_links_per_page=_int(crawler.get("max_pdf_links_per_page"), 8, minimum=1, maximum=50),
-            academic_api_fallback=_bool(crawler.get("academic_api_fallback"), False),
+            timeout_seconds=_int(
+                crawler.get("timeout_seconds"), 25, minimum=3, maximum=120
+            ),
+            max_known_urls=_int(crawler.get("max_known_urls"), 12, minimum=1, maximum=50),
+            max_html_bytes=_int(
+                crawler.get("max_html_bytes"),
+                2 * 1024 * 1024,
+                minimum=64 * 1024,
+                maximum=20 * 1024 * 1024,
+            ),
+            max_pdf_links_per_page=_int(
+                crawler.get("max_pdf_links_per_page"), 8, minimum=1, maximum=50
+            ),
+            user_agent=str(crawler.get("user_agent", CrawlerConfig.user_agent) or CrawlerConfig.user_agent),
         ),
         # Legacy section. Defaults to disabled even if omitted.
         core_api=CoreAPIConfig(
             enabled=_bool(core_api.get("enabled"), False),
             api_key=str(core_api.get("api_key", "") or ""),
-            base_url=str(core_api.get("base_url", "https://api.core.ac.uk/v3") or "https://api.core.ac.uk/v3").rstrip("/"),
+            base_url=str(
+                core_api.get("base_url", "https://api.core.ac.uk/v3")
+                or "https://api.core.ac.uk/v3"
+            ).rstrip("/"),
             timeout_seconds=_int(core_api.get("timeout_seconds"), 25, minimum=3, maximum=120),
             default_limit=_int(core_api.get("default_limit"), 10, minimum=1, maximum=100),
-            topic_candidate_limit=_int(core_api.get("topic_candidate_limit"), 20, minimum=1, maximum=100),
+            topic_candidate_limit=_int(
+                core_api.get("topic_candidate_limit"), 20, minimum=1, maximum=100
+            ),
             sort=str(core_api.get("sort", "relevance") or "relevance"),
         ),
         search_policy=SearchPolicyConfig(
-            accept_min_score=_float(search_policy.get("accept_min_score"), 0.70, minimum=0.0, maximum=1.0),
-            ambiguous_gap_threshold=_float(search_policy.get("ambiguous_gap_threshold"), 0.08, minimum=0.0, maximum=1.0),
-            max_return_candidates=_int(search_policy.get("max_return_candidates"), 5, minimum=1, maximum=20),
+            accept_min_score=_float(
+                search_policy.get("accept_min_score"), 0.70, minimum=0.0, maximum=1.0
+            ),
+            ambiguous_gap_threshold=_float(
+                search_policy.get("ambiguous_gap_threshold"), 0.08, minimum=0.0, maximum=1.0
+            ),
+            max_return_candidates=_int(
+                search_policy.get("max_return_candidates"), 5, minimum=1, maximum=20
+            ),
             enable_fulltext_verify=_bool(search_policy.get("enable_fulltext_verify"), True),
-            max_fulltext_candidates=_int(search_policy.get("max_fulltext_candidates"), 5, minimum=1, maximum=20),
-            download_timeout_seconds=_int(search_policy.get("download_timeout_seconds"), 60, minimum=5, maximum=600),
-            max_pdf_size_mb=_int(search_policy.get("max_pdf_size_mb"), 100, minimum=1, maximum=2048),
+            max_fulltext_candidates=_int(
+                search_policy.get("max_fulltext_candidates"), 5, minimum=1, maximum=20
+            ),
+            download_timeout_seconds=_int(
+                search_policy.get("download_timeout_seconds"), 60, minimum=5, maximum=600
+            ),
+            max_pdf_size_mb=_int(
+                search_policy.get("max_pdf_size_mb"), 100, minimum=1, maximum=2048
+            ),
         ),
     )

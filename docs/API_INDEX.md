@@ -3,7 +3,7 @@
 ## Search
 
 - `paperos.search.service.PaperSearchService.search(raw_query, event=None, need_fulltext=True)`
-  - 在线查找论文候选并尽力验证 PDF。
+  - 在线查找论文候选并尽力下载、验证 PDF。
   - 不写数据库。
   - 不构建 embedding。
 
@@ -23,6 +23,14 @@
   - 接收 bytes 或本地 file。
   - 返回 `StoredObject`。
 
+- `paperos.library.PaperLibraryFacade.import_search_candidate(candidate, source_query=None)`
+  - search/storage 边界适配。
+  - upsert paper metadata。
+  - 将 verified PDF 归档到 object store。
+  - 注册 object/version link。
+  - 可选地入队 RAG 后续处理 job；实际 parser/chunker/indexer 属于 RAG workflow。
+  - 当前尚未接入 `/paperos search`。
+
 ## RAG
 
-RAG 只读本地 storage，不调用 search。若本地没有论文，应由用户显式调用 `/paperos search` 或未来的 `/paperos add`。
+RAG 从本地 storage 读取 paper/object/chunk/index 数据，不调用 search。它负责解析、chunk、embedding、index、retrieval 和基于本地证据的分析。若本地没有论文，应由用户显式调用 search 相关命令或上层 workflow 先扩充本地库。

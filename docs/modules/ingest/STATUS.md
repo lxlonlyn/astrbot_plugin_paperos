@@ -2,14 +2,15 @@
 
 ## 当前状态
 
-尚未作为独立模块稳定实现。
+不作为独立顶层模块稳定实现。入库能力应作为 command/facade/workflow 组合 `search -> storage -> rag`。
 
-## 第一阶段应实现
+## 如需实现，应属于 workflow
 
-- `/paperos ingest <query>`。
+- `/paperos add <query>` 或类似命令。
 - search result -> storage upsert。
 - ambiguous result 的用户确认策略。
-- verified_pdf URL 的下载任务提交。
+- verified PDF 归档到 storage object store。
+- 触发 RAG parse/chunk/embed/index。
 - `/paperos status <paper_id>` 或最近任务状态查询。
 
 ## 暂不实现

@@ -26,7 +26,7 @@
   },
   "query_analyzer": {
     "type": "object",
-    "description": "自然语言检索解析",
+    "description": "自然语言检索解析。该阶段只调用 AstrBot LLM，不调用网页搜索后端。",
     "items": {
       "enabled": {
         "type": "bool",
@@ -42,7 +42,7 @@
       },
       "max_repair_rounds": {
         "type": "int",
-        "description": "网页搜索/targeted crawler 查不到候选时，允许 LLM 修复 SearchPlan 的轮数",
+        "description": "crawler 查不到候选时，允许 LLM 修复 SearchPlan 的轮数",
         "default": 1
       },
       "max_hypotheses": {
@@ -52,51 +52,9 @@
       }
     }
   },
-  "web_search": {
-    "type": "object",
-    "description": "按需网页搜索配置",
-    "items": {
-      "enabled": {
-        "type": "bool",
-        "description": "启用网页搜索",
-        "default": true
-      },
-      "backend": {
-        "type": "string",
-        "description": "网页搜索后端",
-        "default": "duckduckgo_html",
-        "options": ["duckduckgo_html"]
-      },
-      "endpoint": {
-        "type": "string",
-        "description": "搜索后端 endpoint",
-        "default": "https://duckduckgo.com/html/"
-      },
-      "timeout_seconds": {
-        "type": "int",
-        "description": "网页搜索请求超时时间，秒",
-        "default": 20
-      },
-      "max_results_per_query": {
-        "type": "int",
-        "description": "每个 query 最多取多少个网页结果",
-        "default": 5
-      },
-      "max_total_results": {
-        "type": "int",
-        "description": "一次搜索最多保留多少个网页结果",
-        "default": 20
-      },
-      "user_agent": {
-        "type": "string",
-        "description": "HTTP User-Agent",
-        "default": "Mozilla/5.0 (compatible; PaperOS/0.2; +https://github.com/lxlonlyn/astrbot_plugin_paperos)"
-      }
-    }
-  },
   "crawler": {
     "type": "object",
-    "description": "按需 targeted crawler 配置",
+    "description": "按需 URL/identifier crawler。只处理 LLM 或用户给出的明确 URL、arXiv ID、DOI 等，不做通用网页搜索。",
     "items": {
       "enabled": {
         "type": "bool",
@@ -108,10 +66,10 @@
         "description": "候选页面请求超时时间，秒",
         "default": 25
       },
-      "max_pages": {
+      "max_known_urls": {
         "type": "int",
-        "description": "一次搜索最多爬取多少个候选页面",
-        "default": 20
+        "description": "一次 SearchPlan 最多跟进多少个明确来源 URL/identifier",
+        "default": 12
       },
       "max_html_bytes": {
         "type": "int",
@@ -123,10 +81,10 @@
         "description": "单个页面最多抽取多少个 PDF 链接",
         "default": 8
       },
-      "academic_api_fallback": {
-        "type": "bool",
-        "description": "启用旧学术 API fallback。默认关闭；未来只建议用于 metadata enrichment，不建议阻塞 PDF 获取。",
-        "default": false
+      "user_agent": {
+        "type": "string",
+        "description": "HTTP User-Agent",
+        "default": "Mozilla/5.0 (compatible; PaperOS/0.2; +https://github.com/lxlonlyn/astrbot_plugin_paperos)"
       }
     }
   },
@@ -136,7 +94,7 @@
     "items": {
       "enabled": {
         "type": "bool",
-        "description": "启用旧 CORE provider fallback（不推荐）",
+        "description": "启用旧 CORE provider fallback（当前主链路不使用）",
         "default": false
       },
       "api_key": {

@@ -1,6 +1,6 @@
 # Storage 模块
 
-Storage 是 PaperOS 的本地事实源。它不联网，也不调用 LLM。
+Storage 是 PaperOS 的本地事实源。它不联网，不调用 LLM，不调用 embedding provider。
 
 ## 职责
 
@@ -8,7 +8,7 @@ Storage 是 PaperOS 的本地事实源。它不联网，也不调用 LLM。
 - paper metadata、identifier、alias、version、object、fulltext location、job、chunk、index status。
 - content-addressed object store。
 - 本地去重。
-- 提供 RAG 可读取的 chunk / vector / FTS 状态。
+- 为 search 入库和 RAG 索引/检索提供持久化 API。
 
 ## 边界
 
@@ -21,26 +21,15 @@ search.PaperCandidate
   -> repository.upsert_paper()
 ```
 
-## 下载边界
-
-Search 负责下载和验证临时 PDF；storage 负责长期保存：
-
-```text
-search: local_path=/.../searcher/fulltext/<sha>.pdf
-storage.object_store.put_file(local_path, kind="pdf")
-storage.repository.register_object(...)
-storage.repository.attach_object_to_current_version(...)
-```
-
 Storage 不接受 URL 下载任务，只接受已经存在的本地文件或 bytes。
 
-## Embedding 边界
+## 与 RAG
 
-Embedding provider 不属于 storage。推荐放在 `rag/indexer.py` 或未来 worker 中：
+Embedding provider、PDF parser、chunker、retriever 不属于 storage。它们属于 `paperos/rag/`。
 
 ```text
-storage 读待处理 chunk
-rag.indexer 调 embedding provider
-storage.vector 写入向量
-storage 更新 index_status
+rag.parser/chunker/indexer
+  -> read object paths from storage
+  -> call embedding provider if needed
+  -> write chunks/vector metadata/index status through storage APIs
 ```

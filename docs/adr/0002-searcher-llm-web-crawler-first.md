@@ -1,4 +1,4 @@
-# ADR 0002: Searcher 采用 LLM + Web + Targeted Crawler 优先，不再默认使用学术 API
+# ADR 0002: Searcher 采用 LLM + Targeted Crawler 优先，不再默认使用学术 API
 
 ## 状态
 
@@ -22,7 +22,6 @@ PaperOS searcher 默认采用：
 
 ```text
 LLM SearchPlan
-  -> WebSearchEngine
   -> TargetedPaperCrawler
   -> DomainResolver
   -> PDF Verifier
@@ -50,7 +49,7 @@ CORE / OpenAlex / Crossref / Semantic Scholar 不再参与默认 search/download
 
 代价：
 
-- Web search 后端需要配置或维护。
+- 模糊标题/主题请求依赖 LLM 是否能提出明确来源。
 - 少数站点 HTML 改版时需要更新 resolver。
 - citation count、DOI 补全等 metadata 需要后续 enrichment 异步补齐。
 

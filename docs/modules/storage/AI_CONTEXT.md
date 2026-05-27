@@ -4,22 +4,26 @@
 
 ## 当前任务边界
 
-`paperos/storage/` 负责 PaperOS 的本地长期状态：
+`paperos/storage/` 只负责本地持久化数据的保存、更新、查询和返回。
+
+Storage 负责：
 
 - paper / version / identifier / alias。
 - object metadata 与本地 object store。
-- fulltext URL 记录。
-- ingest/download/parse/chunk/embed job 状态。
-- chunk 与 FTS 表。
-- index 状态。
+- fulltext location 记录。
+- job 状态。
+- chunk、FTS、vector/index metadata 的持久化接口。
+- 本地去重和稳定内部 ID。
 
-storage 不负责：
+Storage 不负责：
 
 - 外部论文搜索。
 - 网络下载 PDF。
+- 调用 LLM。
+- 调用 embedding provider。
 - PDF 解析。
-- embedding 计算。
-- RAG answer generation。
+- chunk 切分策略。
+- RAG retrieval 或 answer generation。
 
 ## 为什么不能用 sha256 当 paper id
 
@@ -33,49 +37,50 @@ storage 不负责：
 因此 storage 使用内部稳定 ID：
 
 ```text
-p_xxx     paper id，代表一篇论文
-pv_xxx    paper version id，代表这篇论文的某个版本
-obj_xxx   object id，代表一个本地对象文件
-job_xxx   job id，代表一个异步/可恢复任务
-chk_xxx   chunk id，代表一个 RAG chunk
+p_xxx     paper id
+pv_xxx    paper version id
+obj_xxx   object id
+job_xxx   job id
+chk_xxx   chunk id
 ```
 
 外部 ID，例如 DOI、arXiv、CORE、OpenAlex、Semantic Scholar，放入 `paper_identifiers` 表。
 
 ## 与 search 的关系
 
-search 返回 `PaperSearchResult`。storage 不再二次联网搜索，只消费 search 输出中的：
-
-- `PaperCandidate` metadata。
-- DOI / arXiv / CORE / OpenAlex / Semantic Scholar 等 identifier。
-- `download_url` / `landing_url`。
-- `FulltextLocation`。
-
-本地去重由 storage/ingest 完成，区别于 search-stage dedup。
-
-## 与 ingest 的关系
-
-storage 提供 repository 和 object store。ingest 编排：
+search 返回 `PaperSearchResult`。storage 不再二次联网搜索，只消费上层 facade 转换后的 storage DTO：
 
 ```text
-PaperSearchResult
-  -> LocalPaperDeduplicator / Repository.upsert_candidate
-  -> fulltext_locations register
-  -> enqueue download_pdf job
-  -> downloader writes object
-  -> repository marks current version
+search.PaperCandidate
+  -> facade converts
+  -> storage.PaperRecordDraft
+  -> repository.upsert_paper()
 ```
+
+Search 阶段下载并验证的 PDF 只是临时文件。storage 只接收已经存在的本地文件或 bytes，并将其归档为长期 object。
+
+## 与 RAG 的关系
+
+RAG 负责解析、chunk、embedding 和检索逻辑。storage 只提供持久化接口：
+
+```text
+rag parser/indexer
+  -> repository.replace_chunks(...)
+  -> repository/vector metadata APIs
+  -> index_status update
+```
+
+Storage 可以保存 chunks、FTS 表、vector/index metadata，但不决定怎么解析、怎么切块、怎么调用 embedding provider、怎么排序检索结果。
 
 ## 第一版推荐能力
 
-第一版 storage 应至少支持：
-
 - 初始化 SQLite schema。
 - 自动创建数据目录。
-- upsert paper candidate。
+- upsert paper draft。
 - 按 identifier / normalized title 查重。
 - register fulltext location。
 - enqueue / claim / finish job。
 - register object。
 - paper <-> object link。
 - current version 更新。
+- chunks / index status 持久化接口。

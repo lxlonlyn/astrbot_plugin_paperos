@@ -10,7 +10,7 @@
 storage = await create_storage_context(cfg, plugin_name=plugin_name)
 ```
 
-返回对象建议包含：
+返回 `PaperOSStorageContext`，包含：
 
 ```python
 storage.repository
@@ -28,25 +28,28 @@ storage.paths
 
 Repository 封装 SQLite 操作。
 
-### upsert_candidate
+### upsert_paper
 
 ```python
-paper_id = await repo.upsert_candidate(
-    candidate,
+paper_id = await repo.upsert_paper(
+    draft,
     source_query=raw_query,
-    decision="auto_selected",
+    decision="search_selected",
 )
 ```
 
 职责：
 
-- 规范化 candidate metadata。
+- 接收 `paperos.storage.models.PaperRecordDraft`。
+- 规范化 metadata。
 - 按 identifier 查重。
-- 必要时按 title/year/author 做本地模糊查重。
+- 必要时按 title/year 做本地查重。
 - 创建或更新 `papers`。
 - 写入 `paper_identifiers`。
 - 写入 `paper_aliases`。
+- 创建 `paper_versions` 并设置 current version。
 - 写入 `fulltext_locations`。
+- 写入 `paper_ingest_events`。
 
 不负责：
 
@@ -55,20 +58,24 @@ paper_id = await repo.upsert_candidate(
 
 ### enqueue_job
 
+Repository 只保存和领取 job 状态，不实现 job 的业务逻辑。解析、chunk、embedding、index 等 worker 应放在 `paperos/rag/` 或上层 workflow。
+
 ```python
 job_id = await repo.enqueue_job(
-    job_type="download_pdf",
-    dedupe_key=f"download_pdf:{paper_id}:{url}",
+    job_type="rag_index_pdf",
+    dedupe_key=f"rag_index_pdf:{object_id}",
     paper_id=paper_id,
-    payload={"url": url},
+    object_id=object_id,
+    payload={"source_query": raw_query},
 )
 ```
 
 要求：
 
 - `job_type + dedupe_key` 应唯一，避免重复任务。
-- 支持 pending/running/succeeded/failed/cancelled。
+- 支持 pending/running/done/failed。
 - 支持 stale lock 恢复。
+- 不在 storage 内部调用 parser、LLM 或 embedding provider。
 
 ### register_object
 
@@ -78,15 +85,17 @@ object_id = await repo.register_object(stored_object)
 
 对象由 `ObjectStore` 写入后，再由 repository 记录 metadata。
 
-### attach_object_to_paper
+### attach_object_to_current_version
 
 ```python
-await repo.attach_object_to_paper(
+await repo.attach_object_to_current_version(
     paper_id=paper_id,
     object_id=object_id,
     role="pdf",
 )
 ```
+
+该方法会把 object 挂到 paper 当前 version，并写入 `paper_object_links`。
 
 ## ObjectStore
 
@@ -114,3 +123,15 @@ stored = await object_store.put_file(
 
 - 写 paper/version 关系。
 - 判断该 PDF 属于哪篇论文。
+
+## PaperLibraryFacade
+
+`paperos.library.PaperLibraryFacade` 是 search 与 storage 的边界适配层。它可以把 `PaperCandidate` 转成 `PaperRecordDraft`，再完成：
+
+- `repository.upsert_paper()`；
+- verified PDF 写入 `object_store.put_file()`；
+- `repository.register_object()`；
+- `repository.attach_object_to_current_version()`；
+- 可选地 `repository.enqueue_job("rag_index_pdf", ...)`，实际消费方属于 RAG workflow。
+
+当前 `main.py` 尚未调用该 facade，因此 AstrBot 命令不会自动入库。

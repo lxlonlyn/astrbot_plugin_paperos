@@ -1,184 +1,102 @@
-# PaperOS 模块边界
+# PaperOS module boundaries
 
-本文档是 PaperOS 后续实现和重构时的边界约束。任何新功能在落代码前应先检查本文档，避免把联网、持久化、RAG、科研推理混成一团。
+本文档是 PaperOS 的最高优先级边界规则。其他 AI 在修改仓库前应先读这里，再按模块读取对应的 `AI_CONTEXT.md`。
 
-## 总原则
+## Core modules
 
-PaperOS 只保留少数顶层语义模块：
+PaperOS 的论文数据链路只保留三个核心模块：
 
-```text
-paperos/
-  search/     # 外部资源发现与获取
-  storage/    # 本地论文库与对象存储
-  rag/        # 只基于本地库的检索问答
-  reasoning/  # 基于本地证据的科研推理
-```
+- `search`: 联网获取有效 paper。输入可以是单篇论文线索，也可以是带数量限制的 topic。输出应包含论文 metadata、候选/已验证 PDF、来源与匹配依据。
+- `storage`: 本地持久化事实源。只负责保存、更新、查询和返回持久化数据。不联网，不调用 LLM，不调用 embedding provider，不解析 PDF。
+- `rag`: 本地论文数据处理、索引、检索和回答。负责把 storage 中的 PDF/文本解析成 chunks，调用外部 embedding provider 获取向量，并把 chunk/vector/index 状态写回 storage。
 
-不要把 `crawler`、`downloader`、`indexer`、`parser` 继续提升为顶层平级模块。它们应该放在对应语义模块内部。
+`reasoning` 不是论文数据链路的核心模块。idea generation、claim 整理、related work 草稿等能力应优先作为 `rag` 的上层应用或 workflow，而不是新的底层数据模块。
 
-核心依赖方向：
+`ingest` 也不是顶层模块。搜索结果入库、PDF 归档、解析/索引任务推进应作为 command/facade/workflow 组合 `search -> storage -> rag`。
+
+## Dependency direction
 
 ```text
-AstrBot handler / facade
-    ├── search
-    ├── storage
-    └── rag
-
-search  -> LLM / web / crawler / downloader / verifier
-storage -> SQLite / object store / vector store / jobs
-rag     -> storage / embedding provider / LLM
+AstrBot command/tool/workflow
+  -> search
+  -> storage
+  -> rag
 ```
 
-禁止出现：
+Allowed:
 
-```text
-rag -> search
-storage -> search
-storage -> network
-```
+- command/facade 调用 `search` 后，把结果转换为 storage DTO 再写入 `storage`。
+- `rag` 从 `storage` 读取 papers/objects/chunks/jobs，调用 embedding provider，并把 chunks/vector/index status 写回 `storage`。
+- `search` 下载并验证临时 PDF，返回可交给 storage 归档的本地路径。
 
-## main.py
+Forbidden:
 
-负责：
+- `storage -> search`
+- `storage -> network`
+- `storage -> LLM/embedding provider`
+- `search -> storage`
+- `rag -> search`
+- 把 crawler/downloader/verifier/parser/indexer 提升为顶层模块
 
-- AstrBot `Star` 入口。
-- command / command group / tool 注册。
-- 从 AstrBot 配置读取 PaperOSConfig。
-- 调用稳定 facade 或 service。
-- 将 presenter 的文本返回给用户。
+## Search boundary
 
-不负责：
+Search is online acquisition.
 
-- 爬网页。
-- 下载 PDF。
-- 写 SQL。
-- 做 embedding。
-- 解析 PDF。
+It may:
 
-AstrBot 插件应保留 `metadata.yaml`、`_conf_schema.json`、`requirements.txt` 等标准文件；依赖必须写入 `requirements.txt`，配置 Schema 由 `_conf_schema.json` 描述。
+- call AstrBot LLM provider to turn a user query into a `SearchPlan`;
+- follow concrete sources such as DOI, arXiv, OpenReview, ACL, direct PDF URLs;
+- download temporary PDF files;
+- validate that a file is a real PDF;
+- return `PaperSearchResult` containing metadata and verified fulltext locations.
 
-## search
+It must not:
 
-`search` 是“从网上找资源”的模块。crawler、site resolver、downloader、verifier 都属于 search 的内部实现。
+- write SQLite;
+- own long-term object paths;
+- parse PDF text into chunks;
+- compute embeddings;
+- answer local library questions.
 
-负责：
+## Storage boundary
 
-- 将用户自然语言输入解析为 `SearchPlan`。
-- 调用 LLM 生成少量、精确、可执行的 web search query。
-- 使用 on-demand web search 找候选页面。
-- 只爬取少量候选页面，不做年份/会议全集离线爬取。
-- 针对 arXiv、OpenReview、ACL Anthology、CVF、PMLR 等站点做 domain-specific URL 规范化。
-- 提取 `citation_*` meta、PDF link、landing page、标题、作者、年份、摘要等。
-- 下载候选 PDF 到 searcher 临时目录，并验证魔数、大小、页数。
-- 返回 `PaperSearchResult` / `PaperCandidate` / `FulltextLocation`。
+Storage is persistence only.
 
-不负责：
+It may:
 
-- SQLite 入库。
-- 长期对象路径管理。
-- 解析 PDF 正文。
-- chunk / embedding / vector index。
-- RAG answer generation。
+- initialize directories and SQLite schema;
+- store paper/version/identifier/alias/object/fulltext/job/chunk/index metadata;
+- move an already-local verified file into the object store;
+- return persisted rows and object paths.
 
-默认策略：
+It must not:
 
-```text
-LLM SearchPlan
-  -> on-demand web search
-  -> targeted crawler
-  -> domain resolver
-  -> PDF verifier
-  -> score / dedup / disambiguate
-```
+- fetch URLs;
+- download PDFs;
+- call LLM providers;
+- call embedding providers;
+- parse PDF text;
+- decide search strategy;
+- perform RAG retrieval or answer generation.
 
-CORE / OpenAlex / Crossref / Semantic Scholar 这类学术 API 不再参与默认主链路。它们只能作为未来的可选 metadata enrichment，不影响搜索与下载体验。
+## RAG boundary
 
-## storage
+RAG is local data processing and retrieval.
 
-`storage` 是 PaperOS 的本地事实源。它只接收已经拿到的 metadata、local file 或 chunk，不主动联网。
+It may:
 
-负责：
+- read PDF/text objects from storage;
+- parse papers into text/chunks;
+- call external embedding providers for chunks and query embeddings;
+- write chunks, vector records, and index status back through storage APIs;
+- perform FTS/vector/hybrid retrieval;
+- build answer context and paper-level analysis outputs.
 
-- PaperOS 内部 ID。
-- SQLite schema / migration。
-- papers、identifiers、aliases、versions、objects、fulltext_locations、jobs、chunks、index_status。
-- content-addressed object store。
-- 本地去重和版本关系。
-- vector store 的本地持久化接口。
+It must not:
 
-不负责：
+- search the internet for new papers;
+- download PDFs from URLs;
+- bypass storage when persisting chunks or vectors;
+- mutate search candidate ranking.
 
-- 联网搜索。
-- URL 下载。
-- HTML 爬取。
-- 调用 embedding provider。
-- 生成回答。
-
-特别规则：
-
-- `storage` 不能 import `paperos.search.models`。
-- `storage` 使用自己的 `storage.models.PaperRecordDraft` 和 `FulltextLocationRecord`。
-- search result -> storage record 的转换应该发生在上层 facade 或 adapter，不放进 repository 内部。
-
-## rag
-
-`rag` 是本地论文库上的问答系统。
-
-负责：
-
-- 基于 storage 的 FTS / vector / hybrid retrieval。
-- query embedding。
-- chunk rerank 与上下文构造。
-- citation-aware answer。
-- 读取 storage 中的论文、chunk、向量索引状态。
-
-不负责：
-
-- 在线找论文。
-- 下载 PDF。
-- 爬网页。
-- 修改 searcher 的候选排序。
-
-当 RAG 检索不到内容时，它最多返回“本地库没有相关论文”，不自动调用 search。是否扩充本地库应由用户命令或上层 facade 决定。
-
-## reasoning
-
-`reasoning` 是科研辅助层，只使用本地证据或用户明确提供的内容。
-
-负责：
-
-- idea generation。
-- related work 草稿。
-- 方法比较。
-- claim / experiment / limitation 抽取。
-
-不负责：
-
-- 原始论文搜索。
-- 文件生命周期。
-- 数据库 schema。
-
-## 下载与入库责任
-
-下载责任归 `search`：
-
-```text
-search.acquire/verifier
-  -> 访问 URL
-  -> 下载临时 PDF
-  -> 验证 PDF
-  -> 返回 local_path / sha256 / size / page_count
-```
-
-长期保存责任归 `storage`：
-
-```text
-storage.object_store
-  -> 接收已验证 local file
-  -> 计算 sha256
-  -> 移入 content-addressed object store
-  -> 写 objects / versions / fulltext_locations
-  -> 创建 parse/chunk/embed job
-```
-
-storage 不应该拿 URL 自己下载；search 不应该决定长期 object storage key。
+If local data is missing, RAG should report that the library lacks the paper/data. A command or workflow may then explicitly run `search` and persist the result before invoking RAG again.

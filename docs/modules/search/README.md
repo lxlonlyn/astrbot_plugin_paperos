@@ -1,76 +1,60 @@
-# Search 模块
+# Search module
 
-Search 模块负责在线发现和获取论文资源。它不是 RAG，也不是 storage。
+`paperos.search` is responsible for online paper acquisition. It does not persist papers and does not build embeddings.
 
-## 职责
+## Corrected pipeline
 
 ```text
-用户自然语言
-  -> LLM QueryAnalyzer
+User query
+  -> AstrBotLLMQueryAnalyzer
   -> SearchPlan
-  -> WebSearchEngine
   -> TargetedPaperCrawler
   -> DomainResolver
   -> FulltextVerifier
   -> PaperSearchResult
 ```
 
-默认不使用 CORE/OpenAlex/Crossref/Semantic Scholar 等学术 API。API 的问题是它们经常只能给 metadata 或 landing/hint URL，无法保证可下载 PDF。PaperOS 的 searcher 更关心“这几篇论文能不能找到并验证全文”。
+## LLM usage
 
-## 子目录
+`AstrBotLLMQueryAnalyzer` uses AstrBot's LLM interface. It resolves the current chat provider from the event when no provider is configured, then calls `context.llm_generate(...)`.
 
-```text
-paperos/search/
-  query/          # LLM/fallback QueryAnalyzer
-  crawl/          # web search、targeted crawler、site resolver、HTML extraction
-  acquire/        # PDF verifier/downloader，负责临时下载和验证
-  resolve/        # score、dedup、disambiguation
-  models.py       # search-only DTO
-  pipeline.py     # orchestration
-  service.py      # AstrBot-facing search facade
-  presenter.py    # command/tool 输出格式化
-```
+The LLM does not decide that a paper is valid. It only proposes hypotheses and concrete sources. Every PDF is still downloaded and verified by `FulltextVerifier`.
 
-`crawl` 不提升为顶层模块，因为它只是 searcher 的实现细节。
+## No generic web search backend
 
-## On-demand crawler 策略
+There is no `web_search.endpoint` in the corrected design. There is no DuckDuckGo HTML adapter. Searcher does not call CORE/OpenAlex/Semantic Scholar as the main path.
 
-PaperOS 不做全量爬取，例如“爬取 2026 年某会议所有文章”。每次只根据用户意图生成少量 query，并限制候选数量：
+The crawler only follows concrete sources:
 
-```text
-每个 query top-k
-总候选页面上限 max_total_results
-每篇论文 PDF 候选上限 max_fulltext_candidates
-```
+- arXiv ID or arXiv URL;
+- DOI landing URL;
+- direct PDF URL;
+- OpenReview URL;
+- ACL Anthology URL;
+- publisher/project/author pages explicitly proposed by the LLM or user.
 
-## Domain resolver
+For vague title/topic requests, a capable LLM may propose known arXiv IDs, DOI values, or canonical URLs. If it cannot, PaperOS should return a clear `not_found` message asking for more concrete clues.
 
-优先支持：
+## Files
 
-- arXiv: `/abs/{id}` -> `/pdf/{id}.pdf`
-- OpenReview: `/forum?id=xxx` -> `/pdf?id=xxx`
-- ACL Anthology: `https://aclanthology.org/{id}/` -> `{id}.pdf`
-- PMLR/CVF/项目页/作者主页: 从 HTML meta 和 a[href] 中提取 PDF
+- `service.py`: AstrBot-facing facade.
+- `pipeline.py`: orchestration.
+- `query/analyzer.py`: AstrBot LLM call.
+- `query/prompts.py`: SearchPlan prompt.
+- `crawl/targeted.py`: follows concrete sources only.
+- `crawl/domain_resolver.py`: maps known domains to candidate PDF URLs.
+- `acquire/verifier.py`: downloads and strictly validates PDFs.
+- `resolve/*`: scoring, dedup, disambiguation.
 
-遇到 ACM/IEEE 等受限页面时，只记录 landing page 或尝试寻找公开 PDF，不绕过访问控制。
+## Deprecated/legacy files
 
-## 验证规则
+The following old modules should not be part of the corrected main path:
 
-`FulltextVerifier` 必须：
+- `search/providers/`
+- `search/core_client.py`
+- `search/core_query.py`
+- `search/query_router.py`
+- `search/ranker.py`
+- `search/crawl/search_engine.py`
 
-- 使用 `loc.request_headers`。
-- 限制最大文件大小。
-- 检查内容不是 HTML landing page。
-- 检查文件头 `%PDF-`。
-- 使用 `pypdf` 读取页数。
-- 只有验证成功才标记 `VERIFIED_PDF`。
-
-## Debug 日志
-
-建议保留以下日志点：
-
-- query analyze 输出的 intent/hypothesis 数量。
-- 每个 search query 返回多少网页候选。
-- 每个页面抽取出多少 PDF candidate。
-- 每个 PDF candidate 的验证状态。
-- 去重前后候选数量。
+`search/crawl/search_engine.py` may remain as a compatibility stub during migration, but no new code should import it.

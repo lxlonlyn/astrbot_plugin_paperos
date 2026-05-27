@@ -110,7 +110,7 @@ searcher/provider 找到并验证过的全文位置。
 - `reason`
 - `first_seen_at`, `last_seen_at`
 
-注意：verified_pdf URL 不等价于本地 PDF object。
+注意：search 阶段的 `verified_pdf` 表示已经下载并验证过临时 PDF；它不等价于 storage 的长期 PDF object。只有经过 `ObjectStore.put_file()` 和 `register_object()` 后，才成为长期对象。
 
 ## paper_jobs
 
@@ -118,25 +118,25 @@ searcher/provider 找到并验证过的全文位置。
 
 推荐 job type：
 
-- `download_pdf`
-- `parse_pdf`
-- `chunk_text`
-- `embed_chunks`
+- `rag_index_pdf`
+- `rag_reindex_paper`
 - `build_fts`
 - `build_vector_index`
+
+这些 job 只表示持久化队列状态；具体 parser/chunker/embedding/indexer worker 属于 `paperos/rag/`。
 
 推荐状态：
 
 - `pending`
 - `running`
-- `succeeded`
+- `done`
 - `failed`
-- `cancelled`
 
 关键字段：
 
 - `dedupe_key`
-- `attempt_count`
+- `attempts`
+- `max_attempts`
 - `locked_by`
 - `locked_at`
 - `heartbeat_at`
@@ -150,7 +150,7 @@ searcher/provider 找到并验证过的全文位置。
 
 `paper_chunks_fts` 是 SQLite FTS5 虚表，用于本地关键词检索。
 
-向量索引不以 SQLite 为主，但 `paper_chunks` 是 embedding 的 source of truth。
+`paper_chunks` 是 embedding 的 source of truth。chunk 的生成策略和 embedding 调用属于 RAG。
 
 ## index_status
 
@@ -165,3 +165,5 @@ status: pending / ready / stale / failed
 version
 updated_at
 ```
+
+index status 只描述持久化状态，不表示 storage 负责构建索引。

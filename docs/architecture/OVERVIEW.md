@@ -1,52 +1,57 @@
-# PaperOS 架构总览
+# PaperOS architecture overview
 
-PaperOS 是 AstrBot 插件中的长期论文系统。它不是单一 searcher，而是一组可以逐步落地的模块：搜索、入库、存储、解析、索引、RAG、reasoning。
+PaperOS 是 AstrBot 插件中的论文系统。为了让其他 AI 快速定位上下文，项目按黑盒模块组织，而不是按所有实现细节平铺。
 
-## 分层目标
+## Core data flow
 
 ```text
 User / LLM Tool / AstrBot Command
         ↓
-main.py / runtime glue
+search: find paper metadata + verified PDF
         ↓
-SearchService      IngestService      RagService      ReasoningService
-        ↓                ↓                ↓                ↓
-providers        storage repo       vector/fts       long-context tasks
-        ↓                ↓                ↓                ↓
-external APIs    SQLite + files     LanceDB/API      structured outputs
+storage: persist paper/version/object/fulltext metadata
+        ↓
+rag: parse, chunk, embed, index, retrieve, analyze
 ```
 
-## 第一阶段目标
+## Module intent
 
-第一阶段不追求完整 RAG，而是优先完成可恢复的本地数据闭环：
+- `search`: 联网获取论文。它可以处理单篇论文查找，也可以处理有限数量的 topic 搜索。最终输出应是可验证的 paper metadata 和 PDF/fulltext 信息。
+- `storage`: 本地事实源。它只保存和返回持久化数据，不做联网查询，不调用 LLM 或 embedding provider，不做 PDF 解析。
+- `rag`: 本地论文数据处理和检索分析。它负责解析文章、生成 chunks、调用外部 embedding provider、写入本地索引数据，并基于本地库回答或生成分析。
+
+`reasoning` 可以作为未来的应用层术语存在，但不应成为搜索、存储、文章数据处理链路中的第四个必读模块。idea generation、claim extraction、related work 草稿等能力优先放在 RAG workflow 文档下。
+
+## First stable loop
+
+第一阶段优先完成可恢复的数据闭环：
 
 ```text
 search candidate
-  -> local dedup
-  -> upsert paper metadata
-  -> register verified fulltext location
-  -> enqueue download job
-  -> download pdf
-  -> register object
-  -> mark current version
+  -> verified local PDF
+  -> storage paper upsert
+  -> storage object register/link
+  -> rag parse/chunk/embed/index
+  -> storage chunks/index status
 ```
 
-## 长期目标
+## Long-term target
 
 ```text
-PDF / HTML / metadata
+PDF / metadata
+  -> persistent object
   -> parse
   -> chunk
-  -> API embedding provider
-  -> local vector index
-  -> hybrid retrieval
-  -> paper QA / claim extraction / project memory
+  -> embedding provider
+  -> local vector/FTS index metadata
+  -> retrieval
+  -> paper QA / claim extraction / idea generation
 ```
 
-## 关键原则
+## Principles
 
-1. Searcher 很强，但只做外部发现与 URL 验证，不拥有本地长期状态。
-2. SQLite 是 source of truth；LanceDB、FTS、embedding index 都是可重建索引。
-3. PDF、markdown、json、图片、表格等大对象存文件系统；SQLite 只存 object metadata 和路径 key。
+1. `search` 很强，但只做外部发现、临时下载和 PDF 验证，不拥有本地长期状态。
+2. `storage` 是 source of truth；SQLite、对象文件、chunks、index status 都通过 storage 读写。
+3. embedding provider 属于 `rag` 的索引流程，不属于 storage。
 4. `sha256` 是对象完整性和文件级去重字段，不是 paper id。
-5. embedding 走外部 API provider，本地不要求 GPU。
+5. 新文档应优先说明模块黑盒入口、职责和禁止事项，再链接具体实现文件。
