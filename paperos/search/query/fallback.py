@@ -8,10 +8,16 @@ _DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", re.I)
 _ARXIV_RE = re.compile(r"\b(?:arxiv:)?(\d{4}\.\d{4,5})(?:v\d+)?\b", re.I)
 _OLD_ARXIV_RE = re.compile(r"\b([a-z-]+(?:\.[A-Z]{2})?/\d{7})(?:v\d+)?\b", re.I)
 _URL_RE = re.compile(r"https?://\S+", re.I)
+_CJK_RE = re.compile(r"[\u3400-\u9fff]")
+
+
+def contains_cjk(text: str) -> bool:
+    return bool(_CJK_RE.search(text))
 
 
 def fallback_analyze(raw_query: str) -> SearchPlan:
     q = raw_query.strip()
+    has_cjk = contains_cjk(q)
     hypotheses: list[PaperHypothesis] = []
 
     for doi in _DOI_RE.findall(q):
@@ -43,26 +49,41 @@ def fallback_analyze(raw_query: str) -> SearchPlan:
             for x in ["相关", "综述", "奠基", "经典", "有哪些", "方向", "领域", "topic", "survey", "related", "foundational"]
         )
         if is_topic:
+            search_queries = []
+            if not has_cjk:
+                search_queries = [
+                    f"{q} foundational paper pdf",
+                    f"{q} important papers arxiv",
+                    f"{q} survey representative papers",
+                ]
             hypotheses.append(
                 PaperHypothesis(
                     kind=HypothesisKind.TOPIC,
                     confidence=0.65,
-                    search_queries=[
-                        f"{q} foundational paper pdf",
-                        f"{q} important papers arxiv",
-                        f"{q} survey representative papers",
-                    ],
+                    title=None if has_cjk else q,
+                    search_queries=search_queries,
+                    note=(
+                        "fallback analyzer detected non-English input; LLM translation is required for useful title lookup"
+                        if has_cjk
+                        else None
+                    ),
                 )
             )
             intent = SearchIntent.TOPIC_DISCOVERY
             final_limit = 5
         else:
+            search_queries = [] if has_cjk else [q, f'"{q}" pdf', f'"{q}" arxiv']
             hypotheses.append(
                 PaperHypothesis(
                     kind=HypothesisKind.FUZZY_TITLE,
                     confidence=0.65,
-                    title=q,
-                    search_queries=[q, f'"{q}" pdf', f'"{q}" arxiv'],
+                    title=None if has_cjk else q,
+                    search_queries=search_queries,
+                    note=(
+                        "fallback analyzer detected non-English input; LLM translation is required for useful title lookup"
+                        if has_cjk
+                        else None
+                    ),
                 )
             )
             intent = SearchIntent.FIND_SPECIFIC
@@ -73,7 +94,7 @@ def fallback_analyze(raw_query: str) -> SearchPlan:
 
     return SearchPlan(
         raw_query=raw_query,
-        language="unknown",
+        language="zh" if has_cjk else "unknown",
         intent=intent,
         hypotheses=hypotheses,
         max_candidates=20 if intent == SearchIntent.TOPIC_DISCOVERY else 10,

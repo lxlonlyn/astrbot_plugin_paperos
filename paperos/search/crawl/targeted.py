@@ -129,7 +129,10 @@ class TargetedPaperCrawler:
                 continue
             for title in (hyp.translated_title, hyp.title):
                 clean = strip_html(title or "")
-                if len(clean) >= 8 and clean.lower() not in {item.lower() for item in titles}:
+                if (
+                    self._is_english_lookup_title(clean)
+                    and clean.lower() not in {item.lower() for item in titles}
+                ):
                     titles.append(clean)
         return titles[: self.crawler_cfg.max_known_urls]
 
@@ -251,10 +254,10 @@ class TargetedPaperCrawler:
                 cand = self.domain_resolver.candidate_from_known_url(
                     f"https://dl.acm.org/doi/{doi}",
                     source="llm_acm_doi",
-                ) or PaperCandidate(title=hyp.title or hyp.translated_title or doi, doi=doi)
+                ) or PaperCandidate(title=hyp.translated_title or hyp.title or doi, doi=doi)
             else:
                 cand = PaperCandidate(
-                    title=hyp.title or hyp.translated_title or doi,
+                    title=hyp.translated_title or hyp.title or doi,
                     authors=list(hyp.authors),
                     year=hyp.year,
                     venue=hyp.venue,
@@ -293,7 +296,7 @@ class TargetedPaperCrawler:
 
     def _apply_hypothesis_metadata(self, cand: PaperCandidate, hyp) -> None:
         if hyp.title or hyp.translated_title:
-            cand.title = hyp.title or hyp.translated_title or cand.title
+            cand.title = hyp.translated_title or hyp.title or cand.title
         cand.authors = hyp.authors or cand.authors
         cand.year = hyp.year or cand.year
         cand.venue = hyp.venue or cand.venue
@@ -448,6 +451,14 @@ class TargetedPaperCrawler:
     def _title_tokens(self, title: str) -> list[str]:
         normalized = re.sub(r"[^\w\s]", " ", strip_html(title).lower())
         return [token for token in normalized.split() if len(token) > 2]
+
+    def _is_english_lookup_title(self, title: str) -> bool:
+        if len(title) < 8:
+            return False
+        if re.search(r"[\u3400-\u9fff]", title):
+            return False
+        letters = re.findall(r"[A-Za-z]", title)
+        return len(letters) >= 4
 
     def _candidate_key(self, candidate: PaperCandidate) -> str:
         if candidate.doi:

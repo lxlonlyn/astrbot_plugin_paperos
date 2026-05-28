@@ -39,6 +39,8 @@ For vague title/topic requests, a capable LLM may propose known arXiv IDs, DOI v
 
 The precise-title lookup is not a generic search backend. It is intended for cases where QueryAnalyzer has already reduced the user request to one or more concrete article names, such as a SIGGRAPH paper title. Returned candidates still go through scoring, dedup, disambiguation, and local PDF verification.
 
+Chinese user queries are allowed, but machine-actionable search fields should be English. `translated_title`, `translated_query`, `topic_keywords`, and `search_queries` are expected to contain English academic terms. If the fallback analyzer only sees Chinese text and no DOI/arXiv/URL, it will not use the Chinese text for arXiv/ACM title lookup.
+
 ## Files
 
 - `service.py`: AstrBot-facing facade.
