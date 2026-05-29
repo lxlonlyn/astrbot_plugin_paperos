@@ -124,14 +124,17 @@ stored = await object_store.put_file(
 - 写 paper/version 关系。
 - 判断该 PDF 属于哪篇论文。
 
-## PaperLibraryFacade
+## SearchStorageImportWorkflow
 
-`paperos.library.PaperLibraryFacade` 是 search 与 storage 的边界适配层。它可以把 `PaperCandidate` 转成 `PaperRecordDraft`，再完成：
+`paperos.workflows.search_storage.SearchStorageImportWorkflow` 是 search 与 storage 的边界适配层。它可以把 `PaperCandidate` / `PaperSearchResult` 转成 `PaperRecordDraft`，再完成：
 
 - `repository.upsert_paper()`；
 - verified PDF 写入 `object_store.put_file()`；
 - `repository.register_object()`；
 - `repository.attach_object_to_current_version()`；
-- 可选地 `repository.enqueue_job("rag_index_pdf", ...)`，实际消费方属于 RAG workflow。
+- 可选地 `repository.enqueue_job("rag_index_pdf", ...)`，实际消费方属于 RAG workflow；
+- 可选地在长期 object 归档成功后清理 searcher 临时 PDF。
 
-当前 `main.py` 尚未调用该 facade，因此 AstrBot 命令不会自动入库。
+返回 `SearchStorageImportSummary` / `SearchStorageImportResult`，包含 `paper_id`、`object_id`、`job_id`、是否归档 PDF、是否仅 metadata 入库、临时 PDF 是否已清理等信息。
+
+`paperos.library.PaperLibraryFacade` 仅保留为兼容 re-export。新代码不要继续从顶层 `paperos.library` 引入。

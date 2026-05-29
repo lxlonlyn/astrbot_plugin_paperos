@@ -15,13 +15,15 @@ Storage 是 PaperOS 的本地事实源。它不联网，不调用 LLM，不调�
 Storage 不应该 import `paperos.search.models`。Search 的候选对象应在上层 facade 转换为 `storage.models.PaperRecordDraft` 后再交给 repository。
 
 ```text
-search.PaperCandidate
-  -> facade/adapter converts
+search.PaperSearchResult / search.PaperCandidate
+  -> paperos.workflows.search_storage converts
   -> storage.PaperRecordDraft
   -> repository.upsert_paper()
 ```
 
 Storage 不接受 URL 下载任务，只接受已经存在的本地文件或 bytes。
+
+search/storage 的组合入口属于 workflow 层，不属于 storage 包内部。正式入口是 `paperos.workflows.search_storage.SearchStorageImportWorkflow`；顶层 `paperos.library` 只保留兼容导出。
 
 ## 与 RAG
 

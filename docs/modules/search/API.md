@@ -60,4 +60,4 @@ verified = [
 ]
 ```
 
-注意：`VERIFIED_PDF` 表示该候选已经被下载到 searcher 临时目录并通过本地 PDF 校验；它仍不是长期入库状态。长期保存应交给 `PaperLibraryFacade` 和 storage object store。
+注意：`VERIFIED_PDF` 表示该候选已经被下载到 searcher 临时目录并通过本地 PDF 校验；它仍不是长期入库状态。长期保存应交给 `SearchStorageImportWorkflow` 和 storage object store。

@@ -10,10 +10,12 @@
 
 - 从 AstrBot 命令或 LLM tool 接收自然语言 query。
 - 用 AstrBot 已配置的大模型把 query 解析成结构化 `SearchPlan`，中文提问也应转换成英文论文标题、英文 topic keywords 和英文查询描述。
+- 如果当前 AstrBot 会话启用了 `provider_settings.web_search`，QueryAnalyzer 先用普通 `context.llm_generate(...)` 生成英文 `SearchPlan`，再由 PaperOS 代码直接调用 AstrBot 已配置 provider 的单个内置网页搜索工具。该阶段不使用 `tool_loop_agent(...)`，不注入页面抽取工具，搜索 query 数量受 `query_analyzer.max_web_search_queries` 控制且硬上限为 5；返回 URL 后续交给 crawler/verifier 处理。
 - 在 LLM 不可用或解析失败时，用 fallback analyzer 识别 DOI、arXiv ID、URL；如果只剩中文标题/主题，不直接拿中文去站点 lookup。
 - 用 targeted crawler 跟进 SearchPlan 中已有的明确来源。
 - 对 arXiv、ACM DL、OpenReview、ACL Anthology、直接 PDF URL 等已知来源做 URL 归一化。
 - 对具体英文文章标题做小范围站点 lookup：arXiv API 与 ACM DL 站内检索。该路径用于已知论文名，不是通用网页搜索或会议批量爬虫。
+- 对 LLM 提供的 DOI/arXiv/URL 做标题反校验；如果抓回来的标题与计划标题不匹配，视为 planner 幻觉的 bad identifier，不让它压制标题 lookup 候选。
 - 对候选做 scoring、dedup、disambiguation。
 - 从 HTML citation meta、已知站点规则或直接链接中提取 PDF / landing URL。
 - 下载候选 PDF 到 AstrBot 插件数据目录下的 searcher 临时目录，并用文件头、大小限制、SHA-256 去重和 `pypdf` 做严格验证。
@@ -25,7 +27,7 @@
 - SQLite / LanceDB / 本地数据库入库。
 - 将 searcher 临时 PDF 归档为长期 storage object。
 - PDF 解析、chunk、embedding、RAG。
-- 通用网页搜索后端或会议/期刊批量爬虫。
+- 自己维护一套独立的通用网页搜索后端或会议/期刊批量爬虫；网页搜索应优先复用 AstrBot 内置搜索工具。
 - CORE/OpenAlex/Semantic Scholar 等学术 API 默认主链路。
 - 绕过出版社权限、登录、paywall、验证码。
 

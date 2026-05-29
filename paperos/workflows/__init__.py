@@ -1,19 +1,13 @@
-"""Backward-compatible imports for the search -> storage workflow.
+"""Cross-module workflows that compose PaperOS core modules."""
 
-New code should import from `paperos.workflows.search_storage`.
-"""
-
-from .workflows.search_storage import (
+from .search_storage import (
     SearchStorageImportResult,
     SearchStorageImportSummary,
     SearchStorageImportWorkflow,
     paper_candidate_to_record,
 )
 
-PaperLibraryFacade = SearchStorageImportWorkflow
-
 __all__ = [
-    "PaperLibraryFacade",
     "SearchStorageImportResult",
     "SearchStorageImportSummary",
     "SearchStorageImportWorkflow",

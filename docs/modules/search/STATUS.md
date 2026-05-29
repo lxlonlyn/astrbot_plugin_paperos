@@ -3,10 +3,12 @@
 ## 已实现
 
 - LLM query analyzer。
+- 当 AstrBot 当前会话启用 `provider_settings.web_search` 时，QueryAnalyzer 可直接调用 AstrBot 内置网页搜索工具和已配置 API key；搜索 query 由 PaperOS 控制，最多 5 次，不再交给 `tool_loop_agent(...)` 自由循环。
 - fallback query analyzer：可从原始输入识别 DOI、arXiv ID、URL，并为标题/主题生成基础假设。
 - targeted crawler：只跟进 SearchPlan 中已有的明确来源，不做通用网页搜索。
 - 已知站点 URL 归一化：arXiv、ACM DL、OpenReview、ACL Anthology、直接 PDF URL。
 - 精确标题站点 lookup：arXiv API 与 ACM DL 站内检索，小结果集，面向具体文章名而非大范围爬取。
+- LLM identifier 反校验：当 LLM 同时给出标题和 DOI/arXiv/URL 时，抓取到的标题必须与计划标题相符，否则该具体来源会被视为错误 identifier。
 - 候选 scoring。
 - search-stage dedup。
 - disambiguation。

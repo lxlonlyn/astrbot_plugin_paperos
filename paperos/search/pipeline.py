@@ -9,7 +9,7 @@ from .models import FulltextStatus, PaperCandidate, PaperSearchResult, SearchPla
 from .query.analyzer import AstrBotLLMQueryAnalyzer
 from .resolve.dedup import PaperDeduplicator
 from .resolve.disambiguator import PaperDisambiguator
-from .resolve.scoring import score_candidates
+from .resolve.scoring import title_similarity, score_candidates
 
 
 class PaperSearchPipeline:
@@ -114,6 +114,7 @@ class PaperSearchPipeline:
 
     async def _discover_score_dedup(self, plan: SearchPlan) -> list[PaperCandidate]:
         candidates = await self.crawler.discover(plan)
+        candidates = self._filter_bad_identifier_candidates(plan, candidates)
         scored = score_candidates(plan, candidates)
         deduped = self.deduplicator.dedup(scored)
         logger.debug(
@@ -122,6 +123,51 @@ class PaperSearchPipeline:
             len(deduped),
         )
         return score_candidates(plan, deduped)
+
+    def _filter_bad_identifier_candidates(
+        self,
+        plan: SearchPlan,
+        candidates: list[PaperCandidate],
+    ) -> list[PaperCandidate]:
+        filtered: list[PaperCandidate] = []
+        for cand in candidates:
+            bad_reason = self._bad_identifier_reason(plan, cand)
+            if bad_reason:
+                cand.raw["paperos_rejected_reason"] = bad_reason
+                logger.debug(
+                    "[PaperOS][Pipeline] reject_identifier_candidate source=%s title=%s reason=%s",
+                    cand.source,
+                    self._short(cand.title),
+                    bad_reason,
+                )
+                continue
+            filtered.append(cand)
+        return filtered
+
+    def _bad_identifier_reason(self, plan: SearchPlan, cand: PaperCandidate) -> str | None:
+        for hyp in plan.hypotheses:
+            expected_title = hyp.translated_title or hyp.title
+            if not expected_title:
+                continue
+
+            id_matches = False
+            if hyp.arxiv_id and cand.arxiv_id and hyp.arxiv_id.lower().rstrip("v0123456789") in cand.arxiv_id.lower():
+                id_matches = True
+            if hyp.doi and cand.doi and hyp.doi.lower() == cand.doi.lower():
+                id_matches = True
+            if hyp.url and cand.landing_url and hyp.url.rstrip("/") == cand.landing_url.rstrip("/"):
+                id_matches = True
+
+            if not id_matches:
+                continue
+
+            sim = title_similarity(expected_title, cand.title)
+            if sim < self.cfg.search_policy.identifier_title_min_similarity:
+                return (
+                    f"identifier matched but fetched title disagrees "
+                    f"similarity={sim:.2f} threshold={self.cfg.search_policy.identifier_title_min_similarity:.2f}"
+                )
+        return None
 
     async def _verify_fulltext(self, papers: list[PaperCandidate]) -> None:
         for paper in papers:

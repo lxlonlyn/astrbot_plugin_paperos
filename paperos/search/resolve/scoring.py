@@ -47,12 +47,12 @@ def score_candidate(plan: SearchPlan, cand: PaperCandidate) -> tuple[float, str]
             reasons.append("arXiv exact")
         if hyp.title:
             sim = title_similarity(hyp.title, cand.title)
-            local += 0.65 * sim
+            local += 0.85 * sim
             if sim > 0.75:
                 reasons.append(f"title sim {sim:.2f}")
         if hyp.translated_title:
             sim = title_similarity(hyp.translated_title, cand.title)
-            local += 0.55 * sim
+            local += 0.85 * sim
             if sim > 0.75:
                 reasons.append(f"translated title sim {sim:.2f}")
         if hyp.authors and cand.authors:

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from .storage.config import StorageConfig, load_storage_config
+
 
 @dataclass(frozen=True)
 class GeneralConfig:
@@ -17,6 +19,7 @@ class QueryAnalyzerConfig:
     provider_id: str = ""
     max_repair_rounds: int = 1
     max_hypotheses: int = 6
+    max_web_search_queries: int = 5
 
 
 @dataclass(frozen=True)
@@ -62,6 +65,7 @@ class CoreAPIConfig:
 class SearchPolicyConfig:
     accept_min_score: float = 0.70
     ambiguous_gap_threshold: float = 0.08
+    identifier_title_min_similarity: float = 0.78
     max_return_candidates: int = 5
     enable_fulltext_verify: bool = True
     max_fulltext_candidates: int = 5
@@ -76,6 +80,7 @@ class PaperOSConfig:
     crawler: CrawlerConfig
     search_policy: SearchPolicyConfig
     core_api: CoreAPIConfig
+    storage: StorageConfig
 
 
 def _section(raw: Mapping[str, Any], key: str) -> dict[str, Any]:
@@ -151,6 +156,9 @@ def load_config(raw: Mapping[str, Any]) -> PaperOSConfig:
             max_hypotheses=_int(
                 query_analyzer.get("max_hypotheses"), 6, minimum=1, maximum=12
             ),
+            max_web_search_queries=_int(
+                query_analyzer.get("max_web_search_queries"), 5, minimum=0, maximum=5
+            ),
         ),
         crawler=CrawlerConfig(
             enabled=_bool(crawler.get("enabled"), True),
@@ -187,12 +195,16 @@ def load_config(raw: Mapping[str, Any]) -> PaperOSConfig:
             ),
             sort=str(core_api.get("sort", "relevance") or "relevance"),
         ),
+        storage=load_storage_config(raw),
         search_policy=SearchPolicyConfig(
             accept_min_score=_float(
                 search_policy.get("accept_min_score"), 0.70, minimum=0.0, maximum=1.0
             ),
             ambiguous_gap_threshold=_float(
                 search_policy.get("ambiguous_gap_threshold"), 0.08, minimum=0.0, maximum=1.0
+            ),
+            identifier_title_min_similarity=_float(
+                search_policy.get("identifier_title_min_similarity"), 0.78, minimum=0.0, maximum=1.0
             ),
             max_return_candidates=_int(
                 search_policy.get("max_return_candidates"), 5, minimum=1, maximum=20

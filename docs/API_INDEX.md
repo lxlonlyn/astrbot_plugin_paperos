@@ -23,8 +23,8 @@
   - 接收 bytes 或本地 file。
   - 返回 `StoredObject`。
 
-- `paperos.library.PaperLibraryFacade.import_search_candidate(candidate, source_query=None)`
-  - search/storage 边界适配。
+- `paperos.workflows.search_storage.SearchStorageImportWorkflow.import_search_result(result, source_query=None)`
+  - search/storage/RAG-job 边界 workflow。
   - upsert paper metadata。
   - 将 verified PDF 归档到 object store。
   - 注册 object/version link。

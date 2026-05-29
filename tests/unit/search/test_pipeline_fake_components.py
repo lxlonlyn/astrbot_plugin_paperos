@@ -120,3 +120,50 @@ def test_pipeline_returns_not_found_when_fulltext_required_but_invalid():
 
     asyncio.run(run())
 
+
+def test_pipeline_rejects_llm_identifier_when_fetched_title_disagrees():
+    async def run():
+        cfg = load_config({})
+        bad_identifier = PaperCandidate(
+            title="Atomic gravimeter robust to environmental effects",
+            arxiv_id="2305.05555",
+            fulltext_locations=[FulltextLocation(url="https://arxiv.org/pdf/2305.05555.pdf", source="arxiv")],
+            source="llm_arxiv_id",
+        )
+        title_fallback = PaperCandidate(
+            title="1-Lipschitz Neural Distance Fields",
+            arxiv_id="2407.09505",
+            fulltext_locations=[FulltextLocation(url="https://arxiv.org/pdf/2407.09505.pdf", source="arxiv")],
+            source="arxiv_title_lookup",
+        )
+        plan = SearchPlan(
+            raw_query="1-Lipschitz Neural Distance Fields",
+            intent=SearchIntent.FIND_SPECIFIC,
+            hypotheses=[
+                PaperHypothesis(
+                    kind=HypothesisKind.TITLE,
+                    confidence=0.95,
+                    title="1-Lipschitz Neural Distance Fields",
+                    arxiv_id="2305.05555",
+                    url="https://arxiv.org/abs/2305.05555",
+                )
+            ],
+            final_limit=1,
+            need_fulltext=True,
+        )
+        pipeline = PaperSearchPipeline(
+            cfg=cfg,
+            query_analyzer=FakeQueryAnalyzer(plan),
+            crawler=FakeCrawler([bad_identifier, title_fallback]),
+            deduplicator=PaperDeduplicator(),
+            disambiguator=PaperDisambiguator(cfg.search_policy),
+            verifier=FakeVerifier(),
+        )
+
+        result = await pipeline.run("1-Lipschitz Neural Distance Fields", need_fulltext=True)
+
+        assert result.status == "selected"
+        assert result.selected[0].arxiv_id == "2407.09505"
+        assert all(candidate.arxiv_id != "2305.05555" for candidate in result.candidates)
+
+    asyncio.run(run())

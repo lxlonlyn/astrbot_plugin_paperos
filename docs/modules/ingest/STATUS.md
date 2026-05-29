@@ -6,8 +6,7 @@
 
 ## 如需实现，应属于 workflow
 
-- `/paperos add <query>` 或类似命令。
-- search result -> storage upsert。
+- `/paperos search <query>` 同一次 workflow 内的 search result -> storage upsert。
 - ambiguous result 的用户确认策略。
 - verified PDF 归档到 storage object store。
 - 触发 RAG parse/chunk/embed/index。

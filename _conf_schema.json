@@ -49,12 +49,17 @@
         "type": "int",
         "description": "LLM 最多生成多少个检索假设",
         "default": 6
+      },
+      "max_web_search_queries": {
+        "type": "int",
+        "description": "启用 AstrBot 网页搜索时，QueryAnalyzer 最多主动发起多少次搜索。为避免模型循环调用，硬上限为 5；设为 0 可禁用该阶段。",
+        "default": 5
       }
     }
   },
   "crawler": {
     "type": "object",
-    "description": "按需 URL/identifier crawler。只处理 LLM 或用户给出的明确 URL、arXiv ID、DOI 等，不做通用网页搜索。",
+    "description": "爬虫配置",
     "items": {
       "enabled": {
         "type": "bool",
@@ -95,7 +100,7 @@
   },
   "core_api": {
     "type": "object",
-    "description": "Legacy CORE API 配置。默认不参与搜索主链路，仅保留兼容。",
+    "description": "已弃用，Legacy CORE API 配置。仅保留兼容。",
     "items": {
       "enabled": {
         "type": "bool",
@@ -136,6 +141,59 @@
       }
     }
   },
+  "storage": {
+    "type": "object",
+    "description": "本地持久化存储配置。",
+    "items": {
+      "enabled": {
+        "type": "bool",
+        "description": "启用 storage 本地持久化能力。启用后 search 主流程可将已选候选和已验证 PDF 交给 storage workflow 入库。",
+        "default": true
+      },
+      "root_dir": {
+        "type": "string",
+        "description": "storage 根目录。留空则使用 AstrBot 插件数据目录下的 storage 子目录。",
+        "default": ""
+      },
+      "database_path": {
+        "type": "string",
+        "description": "SQLite 数据库路径。留空则使用 storage 根目录下的 paperos.sqlite3。",
+        "default": ""
+      },
+      "object_dir": {
+        "type": "string",
+        "description": "对象文件目录。留空则使用 storage 根目录下的 objects。",
+        "default": ""
+      },
+      "auto_init": {
+        "type": "bool",
+        "description": "初始化 storage context 时自动创建目录和 SQLite schema。",
+        "default": true
+      },
+      "sqlite_timeout_seconds": {
+        "type": "float",
+        "description": "SQLite 连接超时时间，秒。",
+        "default": 30.0
+      },
+      "sqlite_busy_timeout_ms": {
+        "type": "int",
+        "description": "SQLite busy timeout，毫秒。",
+        "default": 5000
+      },
+      "sqlite_journal_mode": {
+        "type": "string",
+        "description": "SQLite journal mode。",
+        "default": "WAL",
+        "options": ["WAL", "DELETE", "TRUNCATE", "PERSIST", "MEMORY", "OFF"]
+      },
+      "sqlite_synchronous": {
+        "type": "string",
+        "description": "SQLite synchronous 模式。",
+        "default": "NORMAL",
+        "options": ["OFF", "NORMAL", "FULL", "EXTRA"]
+      }
+    }
+  },
   "search_policy": {
     "type": "object",
     "description": "论文搜索策略",
@@ -149,6 +207,11 @@
         "type": "float",
         "description": "top1 与 top2 分差低于该值时认为有歧义",
         "default": 0.08
+      },
+      "identifier_title_min_similarity": {
+        "type": "float",
+        "description": "LLM 给出 DOI/arXiv/URL 时，抓取到的标题与计划标题的最低相似度；低于该值视为错误 identifier",
+        "default": 0.78
       },
       "max_return_candidates": {
         "type": "int",

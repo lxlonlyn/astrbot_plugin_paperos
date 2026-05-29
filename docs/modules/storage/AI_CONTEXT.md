@@ -51,13 +51,19 @@ chk_xxx   chunk id
 search 返回 `PaperSearchResult`。storage 不再二次联网搜索，只消费上层 facade 转换后的 storage DTO：
 
 ```text
-search.PaperCandidate
-  -> facade converts
+search.PaperSearchResult / search.PaperCandidate
+  -> paperos.workflows.search_storage converts
   -> storage.PaperRecordDraft
   -> repository.upsert_paper()
+  -> object_store.put_file(existing verified local PDF)
+  -> repository.register_object()
+  -> repository.attach_object_to_current_version()
+  -> repository.enqueue_job("rag_index_pdf")
 ```
 
 Search 阶段下载并验证的 PDF 只是临时文件。storage 只接收已经存在的本地文件或 bytes，并将其归档为长期 object。
+
+当前设计不建议拆成 `/paperos search` 与 `/paperos add` 两段式流程，因为 searcher 中的候选 metadata 和临时 PDF 是同一次在线获取的结果。正确方式是在 `/paperos search` 这条 workflow 内完成 search -> storage 传递；如果 storage 成功归档 PDF，临时 searcher PDF 可以由 workflow 清理。Storage 自身仍不 import search，也不负责生成聊天返回文案。
 
 ## 与 RAG 的关系
 

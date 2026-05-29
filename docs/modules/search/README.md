@@ -18,6 +18,8 @@ User query
 
 `AstrBotLLMQueryAnalyzer` uses AstrBot's LLM interface. It resolves the current chat provider from the event when no provider is configured, then calls `context.llm_generate(...)`.
 
+If AstrBot's current session config enables `provider_settings.web_search`, QueryAnalyzer still first calls plain `context.llm_generate(...)` to build a structured English `SearchPlan`. PaperOS then directly calls exactly one AstrBot built-in web-search tool for the configured provider, such as Tavily, BoCha, Brave, Firecrawl, or Baidu AI Search. This stage is code-controlled, not a model tool loop: `query_analyzer.max_web_search_queries` is capped at 5, page-extraction tools are not used, and returned URLs/snippets are added as evidence for the targeted crawler.
+
 The LLM does not decide that a paper is valid. It only proposes hypotheses and concrete sources. Every PDF is still downloaded and verified by `FulltextVerifier`.
 
 ## No generic web search backend
@@ -40,6 +42,8 @@ For vague title/topic requests, a capable LLM may propose known arXiv IDs, DOI v
 The precise-title lookup is not a generic search backend. It is intended for cases where QueryAnalyzer has already reduced the user request to one or more concrete article names, such as a SIGGRAPH paper title. Returned candidates still go through scoring, dedup, disambiguation, and local PDF verification.
 
 Chinese user queries are allowed, but machine-actionable search fields should be English. `translated_title`, `translated_query`, `topic_keywords`, and `search_queries` are expected to contain English academic terms. If the fallback analyzer only sees Chinese text and no DOI/arXiv/URL, it will not use the Chinese text for arXiv/ACM title lookup.
+
+LLM-proposed identifiers are not trusted as facts. When a hypothesis contains a title plus a concrete DOI/arXiv ID/URL, the fetched landing-page metadata must still match the planned title. If the title disagrees, PaperOS rejects that identifier candidate and keeps trying precise-title lookup.
 
 ## Files
 

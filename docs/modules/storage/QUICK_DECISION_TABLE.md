@@ -12,13 +12,14 @@ storage = await create_storage_context(cfg, plugin_name=self.name)
 
 ## 我想把搜索结果入库
 
-调用 library facade，或先把 search DTO 转成 storage DTO 后调用 repository：
+调用 search/storage workflow，或先把 search DTO 转成 storage DTO 后调用 repository：
 
 ```python
-paper_id = await library.import_search_candidate(candidate, source_query=query)
+workflow = SearchStorageImportWorkflow(repository=repo, object_store=store)
+summary = await workflow.import_search_result(result, source_query=query)
 ```
 
-不要让 `PaperSearchPipeline` 写数据库。
+不要让 `PaperSearchPipeline` 写数据库。也不要拆成 `/paperos add` 后再次 search；入库应消费同一次 `/paperos search` 产生的 `PaperSearchResult`。
 
 ## 我想保存 PDF 文件
 
