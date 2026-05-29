@@ -38,6 +38,14 @@ class LocalPaperRepository(Protocol):
 
     async def attach_object_to_current_version(self, *, paper_id: str, object_id: str, role: str = "pdf") -> None: ...
 
+    async def attach_object_to_fulltext_location(
+        self,
+        *,
+        paper_id: str,
+        url: str,
+        object_id: str,
+    ) -> None: ...
+
     async def enqueue_job(
         self,
         job_type: str,

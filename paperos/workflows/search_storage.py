@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
-
-from astrbot.api import logger
 
 from ..search.models import PaperCandidate, PaperSearchResult
+from ..storage.importer import PaperImportRequest, PaperImportResult, PaperStorageImporter
 from ..storage.interfaces import LocalPaperRepository, ObjectStore
 from ..storage.models import FulltextLocationRecord, PaperRecordDraft
 
@@ -74,6 +72,22 @@ class SearchStorageImportResult:
     temporary_pdf_removed: bool = False
     message: str = ""
 
+    @classmethod
+    def from_storage_result(cls, result: PaperImportResult) -> "SearchStorageImportResult":
+        return cls(
+            paper_id=result.paper_id,
+            title=result.title,
+            source=result.source,
+            source_query=result.source_query,
+            object_id=result.object_id,
+            job_id=result.job_id,
+            imported_pdf=result.imported_pdf,
+            metadata_only=result.metadata_only,
+            temporary_pdf_path=result.source_file_path,
+            temporary_pdf_removed=result.source_file_removed,
+            message=result.message,
+        )
+
 
 @dataclass(frozen=True)
 class SearchStorageImportSummary:
@@ -103,6 +117,7 @@ class SearchStorageImportWorkflow:
     def __init__(self, *, repository: LocalPaperRepository, object_store: ObjectStore):
         self.repository = repository
         self.object_store = object_store
+        self.importer = PaperStorageImporter(repository=repository, object_store=object_store)
 
     async def import_search_result(
         self,
@@ -137,61 +152,16 @@ class SearchStorageImportWorkflow:
         cleanup_temporary_pdf: bool = False,
     ) -> SearchStorageImportResult:
         record = paper_candidate_to_record(candidate)
-        paper_id = await self.repository.upsert_paper(
-            record,
-            source_query=source_query,
-            decision=decision,
-        )
-
-        verified = candidate.best_verified_pdf()
-        object_id: str | None = None
-        job_id: str | None = None
-        temp_path = verified.local_path if verified and verified.local_path else None
-        temp_removed = False
-
-        if verified and verified.local_path:
-            stored = await self.object_store.put_file(
-                Path(verified.local_path),
-                kind="pdf",
-                suffix=".pdf",
-                mime_type=verified.content_type or "application/pdf",
+        result = await self.importer.import_paper(
+            PaperImportRequest(
+                record=record,
+                source_query=source_query,
+                decision=decision,
+                enqueue_rag=enqueue_rag,
+                cleanup_source_file=cleanup_temporary_pdf,
             )
-            object_id = await self.repository.register_object(stored)
-            await self.repository.attach_object_to_current_version(
-                paper_id=paper_id,
-                object_id=object_id,
-                role="pdf",
-            )
-            if enqueue_rag:
-                job_id = await self.repository.enqueue_job(
-                    "rag_index_pdf",
-                    dedupe_key=f"rag_index_pdf:{object_id}",
-                    paper_id=paper_id,
-                    object_id=object_id,
-                    payload={"source_query": source_query},
-                )
-            if cleanup_temporary_pdf:
-                temp_removed = self._remove_temporary_pdf(verified.local_path)
-
-        logger.debug(
-            "[PaperOS][SearchStorageImportWorkflow] imported paper=%s object=%s job=%s title=%s",
-            paper_id,
-            object_id,
-            job_id,
-            candidate.title,
         )
-        return SearchStorageImportResult(
-            paper_id=paper_id,
-            title=candidate.title,
-            source=candidate.source,
-            source_query=source_query,
-            object_id=object_id,
-            job_id=job_id,
-            imported_pdf=object_id is not None,
-            metadata_only=object_id is None,
-            temporary_pdf_path=temp_path,
-            temporary_pdf_removed=temp_removed,
-        )
+        return SearchStorageImportResult.from_storage_result(result)
 
     def _candidates_to_import(
         self,
@@ -204,13 +174,3 @@ class SearchStorageImportWorkflow:
         if selection == "all_candidates":
             return list(result.candidates)
         raise ValueError(f"unsupported search import selection: {selection!r}")
-
-    def _remove_temporary_pdf(self, path: str) -> bool:
-        try:
-            target = Path(path)
-            if target.exists():
-                target.unlink()
-                return True
-        except OSError as exc:
-            logger.warning("[PaperOS] failed to remove temporary search PDF %s: %r", path, exc)
-        return False

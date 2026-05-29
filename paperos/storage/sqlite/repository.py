@@ -293,6 +293,24 @@ class SQLitePaperRepository:
                 (paper_id, object_id, role, now),
             )
 
+    async def attach_object_to_fulltext_location(
+        self,
+        *,
+        paper_id: str,
+        url: str,
+        object_id: str,
+    ) -> None:
+        now = utc_now()
+        with self._conn:
+            self._conn.execute(
+                """
+                UPDATE fulltext_locations
+                SET object_id = ?, last_seen_at = ?
+                WHERE paper_id = ? AND url = ?
+                """,
+                (object_id, now, paper_id, url),
+            )
+
     # ------------------------------------------------------------------
     # Jobs
     # ------------------------------------------------------------------
@@ -514,11 +532,14 @@ class SQLitePaperRepository:
             self._conn.execute(
                 """
                 INSERT INTO fulltext_locations(
-                    id, paper_id, version_id, url, source, kind, status, license,
-                    version, host_type, confidence, reason, first_seen_at, last_seen_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    id, paper_id, version_id, url, final_url, source, kind, status,
+                    license, version, host_type, confidence, reason, filename,
+                    sha256, size_bytes, content_type, page_count,
+                    first_seen_at, last_seen_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(paper_id, url) DO UPDATE SET
                     version_id=excluded.version_id,
+                    final_url=excluded.final_url,
                     source=excluded.source,
                     kind=excluded.kind,
                     status=excluded.status,
@@ -527,6 +548,11 @@ class SQLitePaperRepository:
                     host_type=excluded.host_type,
                     confidence=excluded.confidence,
                     reason=excluded.reason,
+                    filename=excluded.filename,
+                    sha256=excluded.sha256,
+                    size_bytes=excluded.size_bytes,
+                    content_type=excluded.content_type,
+                    page_count=excluded.page_count,
                     last_seen_at=excluded.last_seen_at
                 """,
                 (
@@ -534,6 +560,7 @@ class SQLitePaperRepository:
                     paper_id,
                     version_id,
                     loc.url,
+                    loc.final_url,
                     loc.source,
                     loc.kind,
                     loc.status,
@@ -542,6 +569,11 @@ class SQLitePaperRepository:
                     loc.host_type,
                     loc.confidence,
                     loc.reason,
+                    loc.filename,
+                    loc.sha256,
+                    loc.size_bytes,
+                    loc.content_type,
+                    loc.page_count,
                     now,
                     now,
                 ),

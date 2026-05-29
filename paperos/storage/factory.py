@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-from ..config import PaperOSConfig
+from typing import TYPE_CHECKING, Any
 
 from .config import StorageConfig
 from .objects import LocalFileObjectStore
 from .paths import DEFAULT_PLUGIN_NAME, PaperOSPaths
 from .sqlite.repository import SQLitePaperRepository
+
+if TYPE_CHECKING:
+    from ..config import PaperOSConfig
 
 
 @dataclass
@@ -22,7 +24,7 @@ class PaperOSStorageContext:
 
 
 async def create_storage_context(
-    cfg: PaperOSConfig,
+    cfg: "PaperOSConfig | Any",
     *,
     plugin_name: str = DEFAULT_PLUGIN_NAME,
 ) -> PaperOSStorageContext:

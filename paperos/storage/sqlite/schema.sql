@@ -97,7 +97,9 @@ CREATE TABLE IF NOT EXISTS fulltext_locations (
     id TEXT PRIMARY KEY,
     paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
     version_id TEXT REFERENCES paper_versions(id) ON DELETE CASCADE,
+    object_id TEXT REFERENCES objects(id) ON DELETE SET NULL,
     url TEXT NOT NULL,
+    final_url TEXT,
     source TEXT,
     kind TEXT,
     status TEXT,
@@ -106,6 +108,11 @@ CREATE TABLE IF NOT EXISTS fulltext_locations (
     host_type TEXT,
     confidence REAL,
     reason TEXT,
+    filename TEXT,
+    sha256 TEXT,
+    size_bytes INTEGER,
+    content_type TEXT,
+    page_count INTEGER,
     first_seen_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
     UNIQUE(paper_id, url)
@@ -113,6 +120,7 @@ CREATE TABLE IF NOT EXISTS fulltext_locations (
 
 CREATE INDEX IF NOT EXISTS idx_fulltext_locations_paper_id ON fulltext_locations(paper_id);
 CREATE INDEX IF NOT EXISTS idx_fulltext_locations_status ON fulltext_locations(status);
+CREATE INDEX IF NOT EXISTS idx_fulltext_locations_object_id ON fulltext_locations(object_id);
 
 CREATE TABLE IF NOT EXISTS paper_ingest_events (
     id TEXT PRIMARY KEY,
