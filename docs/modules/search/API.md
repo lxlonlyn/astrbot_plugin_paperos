@@ -23,7 +23,7 @@ result = await PaperSearchService.search(
 ### 不推荐外部调用的内部类
 
 - `PaperSearchPipeline`：流程编排，内部实现细节。
-- `TargetedPaperCrawler`：只跟进明确来源的实现细节。
+- `TargetedPaperCrawler`：跟进明确来源和小范围精确标题站点 lookup 的实现细节。
 - `DomainResolver`：站点 URL 归一化实现细节。
 - `FulltextVerifier`：下载并严格验证 PDF 的实现细节。
 - `CoreClient` / `paperos.search.providers.*`：legacy provider 代码，当前默认 search path 不使用。

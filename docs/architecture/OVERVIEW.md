@@ -16,7 +16,7 @@ rag: parse, chunk, embed, index, retrieve, analyze
 
 ## Module intent
 
-- `search`: 联网获取论文。它可以处理单篇论文查找，也可以处理有限数量的 topic 搜索。最终输出应是可验证的 paper metadata 和 PDF/fulltext 信息。
+- `search`: 联网获取论文。它可以处理单篇论文查找，也可以处理有限数量的 topic 搜索。它可复用 AstrBot 内置 web search 作为受控 URL 证据来源，也可做小范围精确标题站点 lookup；最终输出应是可验证的 paper metadata 和 PDF/fulltext 信息。
 - `storage`: 本地事实源。它只保存和返回持久化数据，不做联网查询，不调用 LLM 或 embedding provider，不做 PDF 解析。
 - `rag`: 本地论文数据处理和检索分析。它负责解析文章、生成 chunks、调用外部 embedding provider、写入本地索引数据，并基于本地库回答或生成分析。
 

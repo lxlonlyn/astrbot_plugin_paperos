@@ -97,6 +97,18 @@ await repo.attach_object_to_current_version(
 
 该方法会把 object 挂到 paper 当前 version，并写入 `paper_object_links`。
 
+### attach_object_to_fulltext_location
+
+```python
+await repo.attach_object_to_fulltext_location(
+    paper_id=paper_id,
+    url=verified_pdf_url,
+    object_id=object_id,
+)
+```
+
+该方法把已归档 object 反向关联到对应 `fulltext_locations` 行。这样 diagnostics 可以判断 verified PDF 是否已经 linked 到长期 object。
+
 ## ObjectStore
 
 ObjectStore 管理本地文件系统中的大对象。
@@ -132,6 +144,7 @@ stored = await object_store.put_file(
 - verified PDF 写入 `object_store.put_file()`；
 - `repository.register_object()`；
 - `repository.attach_object_to_current_version()`；
+- `repository.attach_object_to_fulltext_location()`；
 - 可选地 `repository.enqueue_job("rag_index_pdf", ...)`，实际消费方属于 RAG workflow；
 - 可选地在长期 object 归档成功后清理 searcher 临时 PDF。
 

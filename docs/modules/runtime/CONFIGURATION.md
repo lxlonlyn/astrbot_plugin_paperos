@@ -21,6 +21,7 @@ rag
 - `crawler`
 - `core_api`
 - `search_policy`
+- `storage`
 
 当前 `PaperOSConfig` 已加载：
 
@@ -29,6 +30,7 @@ rag
 - `crawler`
 - `core_api`
 - `search_policy`
+- `storage`
 
 `storage` 已是顶层配置，接入了 `PaperOSConfig` 和 `_conf_schema.json`。`rag` 是推荐的未来顶层配置。
 

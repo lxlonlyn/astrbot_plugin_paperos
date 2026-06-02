@@ -102,15 +102,24 @@ searcher/provider 找到并验证过的全文位置。
 关键字段：
 
 - `paper_id`
+- `version_id`
+- `object_id`
 - `url`
+- `final_url`
 - `source`
 - `kind`: pdf/html/landing
 - `status`: candidate/verified_pdf/html_fulltext/landing_only/requires_auth/failed/invalid
+- `filename`
+- `sha256`
+- `size_bytes`
+- `content_type`
+- `page_count`
 - `confidence`
 - `reason`
 - `first_seen_at`, `last_seen_at`
 
 注意：search 阶段的 `verified_pdf` 表示已经下载并验证过临时 PDF；它不等价于 storage 的长期 PDF object。只有经过 `ObjectStore.put_file()` 和 `register_object()` 后，才成为长期对象。
+`object_id` 用于标记该 fulltext location 已关联到长期对象。
 
 ## paper_jobs
 

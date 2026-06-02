@@ -23,6 +23,13 @@
 
 `main.py` 负责把 AstrBot command/tool 组合到核心模块上。`/paperos search` 会先调用 search service，再在 storage 启用时调用 `SearchStorageImportWorkflow.import_search_result(...)`，最后用 presenter 输出搜索结果和入库摘要。
 
+当前命令：
+
+- `/paperos search <query>`
+- `/paperos config`
+- `/paperos storage status`
+- `/paperos storage info <paper_id|doi|arxiv|title>`
+
 ```python
 class PaperOSPlugin(Star):
     def __init__(self, context, config):

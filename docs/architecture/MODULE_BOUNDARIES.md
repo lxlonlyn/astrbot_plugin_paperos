@@ -45,7 +45,9 @@ Search is online acquisition.
 It may:
 
 - call AstrBot LLM provider to turn a user query into a `SearchPlan`;
-- follow concrete sources such as DOI, arXiv, OpenReview, ACL, direct PDF URLs;
+- when AstrBot session config enables `provider_settings.web_search`, call exactly one configured AstrBot built-in web-search tool in a code-controlled way to collect URL evidence;
+- follow concrete sources such as DOI, arXiv, ACM DL, OpenReview, ACL, direct PDF URLs;
+- perform small precise-title lookups on known scholarly sites such as arXiv/ACM;
 - download temporary PDF files;
 - validate that a file is a real PDF;
 - return `PaperSearchResult` containing metadata and verified fulltext locations.
@@ -53,6 +55,8 @@ It may:
 It must not:
 
 - write SQLite;
+- maintain its own generic web-search backend separate from AstrBot;
+- crawl venues/journals in bulk;
 - own long-term object paths;
 - parse PDF text into chunks;
 - compute embeddings;

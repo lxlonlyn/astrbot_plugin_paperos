@@ -24,7 +24,7 @@ The LLM does not decide that a paper is valid. It only proposes hypotheses and c
 
 ## No generic web search backend
 
-There is no `web_search.endpoint` in the corrected design. There is no DuckDuckGo HTML adapter. Searcher does not call CORE/OpenAlex/Semantic Scholar as the main path.
+There is no PaperOS-owned `web_search.endpoint` in the corrected design. There is no DuckDuckGo HTML adapter. Searcher does not call CORE/OpenAlex/Semantic Scholar as the main path.
 
 The crawler only follows concrete sources or precise-title site lookups:
 
@@ -34,7 +34,7 @@ The crawler only follows concrete sources or precise-title site lookups:
 - OpenReview URL;
 - ACL Anthology URL;
 - ACM DL DOI/page URL;
-- precise title lookup on arXiv and ACM DL, with a small result limit;
+- precise English title lookup on arXiv and ACM DL, with a small result limit;
 - publisher/project/author pages explicitly proposed by the LLM or user.
 
 For vague title/topic requests, a capable LLM may propose known arXiv IDs, DOI values, or canonical URLs. If it cannot, PaperOS should return a clear `not_found` message asking for more concrete clues.

@@ -55,17 +55,22 @@ AstrBot/
       "description": "插件启动时自动初始化目录和数据库 schema",
       "default": true
     },
+    "sqlite_timeout_seconds": {
+      "type": "float",
+      "description": "SQLite 连接超时时间，秒",
+      "default": 30.0
+    },
     "sqlite_journal_mode": {
       "type": "string",
       "description": "SQLite journal mode",
       "default": "WAL",
-      "options": ["WAL", "DELETE"]
+      "options": ["WAL", "DELETE", "TRUNCATE", "PERSIST", "MEMORY", "OFF"]
     },
     "sqlite_synchronous": {
       "type": "string",
       "description": "SQLite synchronous 模式",
       "default": "NORMAL",
-      "options": ["NORMAL", "FULL", "OFF"]
+      "options": ["OFF", "NORMAL", "FULL", "EXTRA"]
     },
     "sqlite_busy_timeout_ms": {
       "type": "int",
@@ -86,6 +91,7 @@ AstrBot/
     "database_path": "",
     "object_dir": "",
     "auto_init": true,
+    "sqlite_timeout_seconds": 30.0,
     "sqlite_journal_mode": "WAL",
     "sqlite_synchronous": "NORMAL",
     "sqlite_busy_timeout_ms": 5000
