@@ -14,6 +14,61 @@ from ..objects import StoredObject
 from ..text import normalize_identifier, normalize_text
 
 
+SCHEMA_VERSION = 1
+SCHEMA_NAME = "initial_storage_schema"
+
+KNOWN_SCHEMA_OBJECTS = [
+    "index_status",
+    "paper_chunks_fts",
+    "paper_chunks",
+    "paper_jobs",
+    "paper_ingest_events",
+    "fulltext_locations",
+    "paper_object_links",
+    "paper_versions",
+    "objects",
+    "paper_aliases",
+    "paper_identifiers",
+    "papers",
+    "schema_migrations",
+]
+
+REQUIRED_SCHEMA_COLUMNS = {
+    "fulltext_locations": {
+        "id",
+        "paper_id",
+        "version_id",
+        "object_id",
+        "url",
+        "final_url",
+        "source",
+        "kind",
+        "status",
+        "license",
+        "version",
+        "host_type",
+        "confidence",
+        "reason",
+        "filename",
+        "sha256",
+        "size_bytes",
+        "content_type",
+        "page_count",
+        "first_seen_at",
+        "last_seen_at",
+    },
+    "index_status": {
+        "id",
+        "paper_id",
+        "index_name",
+        "status",
+        "profile",
+        "updated_at",
+        "message",
+    },
+}
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -51,6 +106,8 @@ class SQLitePaperRepository:
     async def initialize(self) -> None:
         schema_path = Path(__file__).with_name("schema.sql")
         sql = schema_path.read_text(encoding="utf-8")
+        if not self._schema_is_current():
+            self._reset_schema()
         with self._conn:
             self._conn.executescript(sql)
             self._conn.execute(
@@ -58,11 +115,45 @@ class SQLitePaperRepository:
                 INSERT OR IGNORE INTO schema_migrations(version, name, applied_at)
                 VALUES (?, ?, ?)
                 """,
-                (1, "initial_storage_schema", utc_now()),
+                (SCHEMA_VERSION, SCHEMA_NAME, utc_now()),
             )
 
     async def aclose(self) -> None:
         self._conn.close()
+
+    def _schema_is_current(self) -> bool:
+        existing = self._existing_schema_objects()
+        if not existing:
+            return True
+
+        for table_name, required_columns in REQUIRED_SCHEMA_COLUMNS.items():
+            if table_name not in existing:
+                return False
+            if not required_columns.issubset(self._table_columns(table_name)):
+                return False
+        return True
+
+    def _existing_schema_objects(self) -> set[str]:
+        rows = self._conn.execute(
+            """
+            SELECT name FROM sqlite_master
+            WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'
+            """
+        ).fetchall()
+        return {str(row["name"]) for row in rows}
+
+    def _table_columns(self, table_name: str) -> set[str]:
+        rows = self._conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        return {str(row["name"]) for row in rows}
+
+    def _reset_schema(self) -> None:
+        self._conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            with self._conn:
+                for object_name in KNOWN_SCHEMA_OBJECTS:
+                    self._conn.execute(f"DROP TABLE IF EXISTS {object_name}")
+        finally:
+            self._conn.execute("PRAGMA foreign_keys = ON")
 
     # ------------------------------------------------------------------
     # Paper identity / local dedup

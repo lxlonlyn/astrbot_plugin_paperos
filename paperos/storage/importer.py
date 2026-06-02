@@ -25,6 +25,8 @@ class PaperImportResult:
     source: str
     source_query: str | None = None
     object_id: str | None = None
+    object_storage_key: str | None = None
+    object_path: str | None = None
     job_id: str | None = None
     imported_pdf: bool = False
     metadata_only: bool = True
@@ -54,6 +56,8 @@ class PaperStorageImporter:
 
         verified = best_verified_pdf_location(record)
         object_id: str | None = None
+        object_storage_key: str | None = None
+        object_path: str | None = None
         job_id: str | None = None
         source_path = verified.local_path if verified and verified.local_path else None
         source_removed = False
@@ -66,6 +70,8 @@ class PaperStorageImporter:
                 mime_type=verified.content_type or "application/pdf",
             )
             object_id = await self.repository.register_object(stored)
+            object_storage_key = stored.storage_key
+            object_path = str(stored.path)
             await self.repository.attach_object_to_current_version(
                 paper_id=paper_id,
                 object_id=object_id,
@@ -100,6 +106,8 @@ class PaperStorageImporter:
             source=record.source,
             source_query=request.source_query,
             object_id=object_id,
+            object_storage_key=object_storage_key if object_id else None,
+            object_path=object_path if object_id else None,
             job_id=job_id,
             imported_pdf=object_id is not None,
             metadata_only=object_id is None,

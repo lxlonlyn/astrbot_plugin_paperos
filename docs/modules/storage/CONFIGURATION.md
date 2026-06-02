@@ -17,6 +17,8 @@ AstrBot/
           json/
         tmp/
         indexes/
+          fts/
+          vector/
 ```
 
 不要把数据库和对象文件放在插件源码目录下。源码目录可能会被 git pull、重装、容器重建影响。
@@ -35,7 +37,7 @@ AstrBot/
     },
     "root_dir": {
       "type": "string",
-      "description": "PaperOS 数据根目录。留空则使用 AstrBot data/plugin_data/<plugin_name>",
+      "description": "PaperOS 数据根目录。留空则使用 AstrBot data/plugin_data/<plugin_name>，不要使用插件源码目录",
       "default": ""
     },
     "database_path": {
@@ -96,5 +98,7 @@ AstrBot/
 第一阶段不需要。目标规模 5k 篇论文时，SQLite + 本地对象文件足够作为 storage 默认后端。
 
 API embedding provider 属于 RAG 配置，不属于 storage 配置。storage 只保存 embedding/vector/index 的持久化结果或状态。
+
+本地向量索引后续默认放在 `root_dir/indexes/vector/`。SQLite 仍然是 paper、object、chunk、job、index status 的 source of truth；向量库只是可重建索引文件，不应放在插件源码目录下。
 
 后续如果需要多人协作、远程同步、跨设备写入，再考虑 PostgreSQL / S3 / Qdrant / Neo4j 等外部服务。

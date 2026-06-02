@@ -20,12 +20,12 @@
 - 从 HTML citation meta、已知站点规则或直接链接中提取 PDF / landing URL。
 - 下载候选 PDF 到 AstrBot 插件数据目录下的 searcher 临时目录，并用文件头、大小限制、SHA-256 去重和 `pypdf` 做严格验证。
 - 标记 `verified_pdf` / `no_open_access` / `requires_auth` / `failed` / `invalid` 等全文状态。
-- 返回 `PaperSearchResult`，由 presenter 格式化为聊天输出。
+- 返回 `PaperSearchResult`，由 presenter 格式化为聊天输出；在 AstrBot command 层，`/paperos search` 会把同一次结果交给 storage workflow 入库。
 
 当前 searcher 不实现：
 
-- SQLite / LanceDB / 本地数据库入库。
-- 将 searcher 临时 PDF 归档为长期 storage object。
+- 在 `PaperSearchPipeline` 内部写 SQLite / LanceDB / 本地数据库。
+- 在 `PaperSearchPipeline` 内部将 searcher 临时 PDF 归档为长期 storage object。
 - PDF 解析、chunk、embedding、RAG。
 - 自己维护一套独立的通用网页搜索后端或会议/期刊批量爬虫；网页搜索应优先复用 AstrBot 内置搜索工具。
 - CORE/OpenAlex/Semantic Scholar 等学术 API 默认主链路。
@@ -93,7 +93,7 @@ PaperSearchResult
 
 - search 返回候选、fulltext 状态和 searcher 临时 PDF 路径。
 - searcher 临时 PDF 必须放在 AstrBot 插件数据目录：`get_astrbot_data_path()/plugin_data/astrbot_plugin_paperos/searcher/fulltext/`。
-- 上层 command/workflow 或 library facade 消费 search 结果，决定是否入库。
+- 上层 command/workflow 消费 search 结果，决定是否入库；当前 `/paperos search` 已在 storage 启用时自动调用 `SearchStorageImportWorkflow.import_search_result(...)`。
 - storage 负责 paper/version/object/job 的长期状态。
-- storage object store 负责把 verified PDF 从临时路径归档为长期 object。
+- storage object store 负责把 verified PDF 从临时路径归档为长期 object；归档成功后，workflow 可以清理 searcher 临时 PDF，并使用 storage object 路径发送文件。
 - rag 负责后续 PDF 解析、chunk、embedding、index 和本地分析。

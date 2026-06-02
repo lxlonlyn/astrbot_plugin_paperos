@@ -17,7 +17,7 @@ result = await PaperSearchService.search(
 ### 使用场景
 
 - 用户明确要找论文。
-- 上层 command/workflow 需要先发现候选，再决定是否写入 storage。
+- `PaperSearchService` 本身只发现候选；AstrBot command/workflow 会在同一次 `/paperos search` 中决定是否写入 storage。
 - 显式的“扩充本地论文库”流程需要先发现并验证候选。
 
 ### 不推荐外部调用的内部类
@@ -60,4 +60,4 @@ verified = [
 ]
 ```
 
-注意：`VERIFIED_PDF` 表示该候选已经被下载到 searcher 临时目录并通过本地 PDF 校验；它仍不是长期入库状态。长期保存应交给 `SearchStorageImportWorkflow` 和 storage object store。
+注意：`VERIFIED_PDF` 表示该候选已经被下载到 searcher 临时目录并通过本地 PDF 校验；它仍不是长期入库状态。`/paperos search` 的 command workflow 会在 storage 启用时调用 `SearchStorageImportWorkflow` 和 storage object store 归档。

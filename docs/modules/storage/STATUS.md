@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-storage 处于早期可用阶段：SQLite schema、repository、object store、路径初始化和 search/storage workflow 已经有代码实现，但还没有接入 `main.py` 的 AstrBot command 主流程。
+storage 处于早期可用阶段：SQLite schema、repository、object store、路径初始化和 search/storage workflow 已经有代码实现，并已接入 `/paperos search` 的 AstrBot command 主流程。
 
 ## 已实现
 
@@ -24,11 +24,10 @@ storage 处于早期可用阶段：SQLite schema、repository、object store、�
 - RAG 后续任务排队：`rag_index_pdf`。
 - verified PDF 导入 object store。后续 parse/chunk/embed/index 应由 RAG workflow 推进。
 
-## 未接入或未完成
+## 未完成
 
-- `main.py` 尚未调用 `create_storage_context()`。
-- `/paperos search` 当前只返回/发送 PDF，不自动调用 `SearchStorageImportWorkflow.import_search_result()`。
 - 尚未实现 RAG parser/chunker/indexer；storage 只提供可供其写入的数据表和 repository 方法。
+- LLM tool `paperos_search_paper` 当前仍只返回搜索结果，不做隐式入库，避免模型工具调用产生用户未预期的持久化写入。
 
 ## 暂不作为第一阶段目标
 

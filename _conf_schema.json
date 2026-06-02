@@ -152,7 +152,7 @@
       },
       "root_dir": {
         "type": "string",
-        "description": "storage 根目录。留空则使用 AstrBot 插件数据目录下的 storage 子目录。",
+        "description": "storage 根目录。留空则使用 AstrBot data/plugin_data/<plugin_name> 目录，不使用插件源码目录。",
         "default": ""
       },
       "database_path": {

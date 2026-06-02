@@ -29,7 +29,7 @@
   - 将 verified PDF 归档到 object store。
   - 注册 object/version link。
   - 可选地入队 RAG 后续处理 job；实际 parser/chunker/indexer 属于 RAG workflow。
-  - 当前尚未接入 `/paperos search`。
+  - 已接入 `/paperos search` 的 AstrBot command workflow。
 
 ## RAG
 

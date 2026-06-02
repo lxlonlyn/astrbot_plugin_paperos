@@ -30,7 +30,7 @@ rag
 - `core_api`
 - `search_policy`
 
-`storage` 和 `rag` 是推荐的未来顶层配置；其中 storage 模块已有实现代码，但还没有接入 `PaperOSConfig` 和 `_conf_schema.json`。
+`storage` 已是顶层配置，接入了 `PaperOSConfig` 和 `_conf_schema.json`。`rag` 是推荐的未来顶层配置。
 
 不要为 `ingest` 或 `reasoning` 新增顶层配置，除非它们已经明确收敛为 command/workflow 级能力。文章数据链路应保持在 `search`、`storage`、`rag` 内。
 

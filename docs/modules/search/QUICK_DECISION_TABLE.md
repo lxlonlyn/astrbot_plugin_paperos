@@ -24,7 +24,7 @@ text = PaperSearchPresenter(cfg).format_search_result(result)
 
 ## 我想新增一个搜索 API
 
-先确认它是否仍符合 search 边界：只负责联网获取有效 paper，不负责入库、解析、embedding 或回答。
+先确认它是否仍符合 search 边界：`PaperSearchService` 只负责联网获取有效 paper，不负责入库、解析、embedding 或回答。入库发生在 AstrBot command/workflow 层。
 
 当前默认主链路不使用通用 web search 后端，也不使用 CORE/OpenAlex/Semantic Scholar 主链路。新增来源应优先作为 `TargetedPaperCrawler` / `DomainResolver` 的站点规则，或作为未来可选 metadata enrichment，不要扩大 search 的顶层职责。
 
@@ -40,4 +40,4 @@ text = PaperSearchPresenter(cfg).format_search_result(result)
 
 ## 我想存数据库
 
-不要放进 search pipeline。应在上层 command/facade 中把 `PaperCandidate` 转成 `storage.PaperRecordDraft` 后调用 storage repository。
+不要放进 search pipeline。应在上层 command/workflow 中把 `PaperSearchResult` 交给 `SearchStorageImportWorkflow`，由它转换为 `storage.PaperRecordDraft` 后调用 storage repository。

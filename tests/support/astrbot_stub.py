@@ -65,6 +65,14 @@ class _CommandGroup:
 
         return decorator
 
+    def group(self, name: str):
+        def decorator(func):
+            group = _CommandGroup(func)
+            group.__paperos_group__ = name
+            return group
+
+        return decorator
+
 
 class _Filter:
     @staticmethod

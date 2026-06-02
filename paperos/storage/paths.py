@@ -30,6 +30,8 @@ class PaperOSPaths:
     object_dir: Path
     tmp_dir: Path
     index_dir: Path
+    fts_index_dir: Path
+    vector_index_dir: Path
 
     @classmethod
     def from_config(cls, cfg: StorageConfig, *, plugin_name: str = DEFAULT_PLUGIN_NAME) -> "PaperOSPaths":
@@ -37,12 +39,15 @@ class PaperOSPaths:
         root = root.resolve()
         db_path = Path(cfg.database_path).expanduser().resolve() if cfg.database_path else root / "paperos.sqlite3"
         object_dir = Path(cfg.object_dir).expanduser().resolve() if cfg.object_dir else root / "objects"
+        index_dir = root / "indexes"
         return cls(
             root_dir=root,
             database_path=db_path,
             object_dir=object_dir,
             tmp_dir=root / "tmp",
-            index_dir=root / "indexes",
+            index_dir=index_dir,
+            fts_index_dir=index_dir / "fts",
+            vector_index_dir=index_dir / "vector",
         )
 
     def ensure_dirs(self) -> None:
@@ -51,3 +56,5 @@ class PaperOSPaths:
         self.object_dir.mkdir(parents=True, exist_ok=True)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         self.index_dir.mkdir(parents=True, exist_ok=True)
+        self.fts_index_dir.mkdir(parents=True, exist_ok=True)
+        self.vector_index_dir.mkdir(parents=True, exist_ok=True)

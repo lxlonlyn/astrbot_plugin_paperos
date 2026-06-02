@@ -65,6 +65,8 @@ class SearchStorageImportResult:
     source: str
     source_query: str | None = None
     object_id: str | None = None
+    object_storage_key: str | None = None
+    object_path: str | None = None
     job_id: str | None = None
     imported_pdf: bool = False
     metadata_only: bool = True
@@ -80,6 +82,8 @@ class SearchStorageImportResult:
             source=result.source,
             source_query=result.source_query,
             object_id=result.object_id,
+            object_storage_key=result.object_storage_key,
+            object_path=result.object_path,
             job_id=result.job_id,
             imported_pdf=result.imported_pdf,
             metadata_only=result.metadata_only,

@@ -52,6 +52,8 @@ def test_import_search_result_persists_metadata_pdf_and_rag_job(tmp_path):
         assert summary.pdf_count == 1
         assert summary.job_count == 1
         assert summary.results[0].object_id
+        assert summary.results[0].object_storage_key
+        assert summary.results[0].object_path
         assert summary.results[0].job_id
         assert summary.results[0].temporary_pdf_removed is True
         assert not pdf_path.exists()
