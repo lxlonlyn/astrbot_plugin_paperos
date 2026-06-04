@@ -45,7 +45,8 @@ async def resolve(paper: PaperCandidate) -> list[FulltextLocation]: ...
 
 - 本地 object registration。
 - 长期归档。
-- PDF 文本解析、chunk、embedding。
+- PDF -> TEI -> normalized document -> chunks / FTS。
+- embedding / vector index / retrieval。
 - 绕过登录、验证码、paywall 或出版社权限限制。
 
 `FulltextStatus.VERIFIED_PDF` 只表示 search 阶段临时文件已经下载并通过本地 PDF 校验；长期保存应由 storage object store 接管。

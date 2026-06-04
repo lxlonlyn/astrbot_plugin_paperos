@@ -26,7 +26,10 @@
 
 - 在 `PaperSearchPipeline` 内部写 SQLite / LanceDB / 本地数据库。
 - 在 `PaperSearchPipeline` 内部将 searcher 临时 PDF 归档为长期 storage object。
-- PDF 解析、chunk、embedding、RAG。
+- 在 `PaperSearchPipeline` 内部编排跨模块 workflow；它只是 searcher 内部 acquisition pipeline。
+- import 或调用 `paperos.storage` / `paperos.rag`。
+- PDF -> TEI -> normalized document -> chunks / FTS。
+- embedding、vector index、RAG retrieval / answer。
 - 自己维护一套独立的通用网页搜索后端或会议/期刊批量爬虫；网页搜索应优先复用 AstrBot 内置搜索工具。
 - CORE/OpenAlex/Semantic Scholar 等学术 API 默认主链路。
 - 绕过出版社权限、登录、paywall、验证码。
@@ -42,6 +45,7 @@ result = await search_service.search(
     raw_query="attention is all you need",
     event=event,
     need_fulltext=True,
+    context=None,
 )
 ```
 
@@ -89,6 +93,34 @@ FulltextVerifier.verify()
 PaperSearchResult
 ```
 
+`PaperSearchPipeline` 是 searcher 内部 acquisition pipeline。它不是 PaperOS
+跨模块 workflow pipeline，也不是 storage/rag 编排器。searcher 之外的
+command/workflow 可以在调用 search 后，把 `PaperSearchResult` 交给 storage
+或构造 RAG 后续任务。
+
+## SearchContext / RAG-assisted hints
+
+search 可以接收 workflow 提供的 `SearchContext`：
+
+```python
+from paperos.search.models import SearchContext
+
+context = SearchContext(
+    expanded_queries=['"1-Lipschitz Neural Distance Fields" "Computer Graphics Forum"'],
+    known_titles=["1-Lipschitz Neural Distance Fields"],
+    known_identifiers=["arXiv:2407.09505"],
+    preferred_concepts=["neural distance fields", "Lipschitz neural networks"],
+    negative_hints=["atomic gravimeter"],
+    local_context_summary="Local notes suggest SGP / CGF 2024.",
+)
+result = await search_service.search(raw_query, event=event, context=context)
+```
+
+`SearchContext` 是纯 DTO。searcher 只消费字符串、identifier 和 hint，不知道这些
+hint 来自 RAG、storage、用户、配置还是历史记录。RAG 如果发现需要外部扩展，
+应把 expansion hints 返回给上层 workflow；workflow 再决定是否构造
+`SearchContext` 并显式调用 searcher。
+
 ## 与 storage / rag 的关系
 
 - search 返回候选、fulltext 状态和 searcher 临时 PDF 路径。
@@ -96,4 +128,6 @@ PaperSearchResult
 - 上层 command/workflow 消费 search 结果，决定是否入库；当前 `/paperos search` 已在 storage 启用时自动调用 `SearchStorageImportWorkflow.import_search_result(...)`。
 - storage 负责 paper/version/object/job 的长期状态。
 - storage object store 负责把 verified PDF 从临时路径归档为长期 object；归档成功后，workflow 可以清理 searcher 临时 PDF，并使用 storage object 路径发送文件。
-- rag 负责后续 PDF 解析、chunk、embedding、index 和本地分析。
+- storage document processing 负责后续 PDF -> TEI -> normalized document -> chunks / FTS。
+- rag 负责后续 embedding、vector index、retrieval 和本地分析。
+- rag 不能直接调用 `PaperSearchService`；需要外部扩展时返回 hints 给 workflow。

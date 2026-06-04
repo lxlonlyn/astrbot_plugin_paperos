@@ -1,5 +1,9 @@
 """Cross-module workflows that compose PaperOS core modules."""
 
+from .paper_discovery import (
+    DiscoveryPipelineResult,
+    PaperDiscoveryWorkflow,
+)
 from .search_storage import (
     SearchStorageImportResult,
     SearchStorageImportSummary,
@@ -8,6 +12,8 @@ from .search_storage import (
 )
 
 __all__ = [
+    "DiscoveryPipelineResult",
+    "PaperDiscoveryWorkflow",
     "SearchStorageImportResult",
     "SearchStorageImportSummary",
     "SearchStorageImportWorkflow",

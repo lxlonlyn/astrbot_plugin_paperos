@@ -14,6 +14,15 @@ await PaperSearchService.search(raw_query, event=event, need_fulltext=True)
 await PaperSearchService.search(raw_query, event=event, need_fulltext=False)
 ```
 
+## 我有 workflow / RAG 提供的扩展线索
+
+```python
+await PaperSearchService.search(raw_query, event=event, context=search_context)
+```
+
+`search_context` 必须是 `paperos.search.models.SearchContext` 这类纯 DTO。
+不要让 searcher import 或调用 storage/rag 来补全它。
+
 ## 我想把搜索结果显示给用户
 
 ```python

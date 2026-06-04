@@ -103,7 +103,7 @@ AstrBot/
 
 第一阶段不需要。目标规模 5k 篇论文时，SQLite + 本地对象文件足够作为 storage 默认后端。
 
-API embedding provider 属于 RAG 配置，不属于 storage 配置。storage 只保存 embedding/vector/index 的持久化结果或状态。
+GROBID 或本地 parser 配置属于 storage 文档处理配置。API embedding provider 属于 RAG 配置，不属于 storage 配置。storage 只保存 embedding/vector/index 的持久化结果或状态。
 
 本地向量索引后续默认放在 `root_dir/indexes/vector/`。SQLite 仍然是 paper、object、chunk、job、index status 的 source of truth；向量库只是可重建索引文件，不应放在插件源码目录下。
 

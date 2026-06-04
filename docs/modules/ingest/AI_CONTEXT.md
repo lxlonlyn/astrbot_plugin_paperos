@@ -1,6 +1,6 @@
 # PaperOS Ingest：AI Context
 
-Ingest 不再作为 PaperOS 的顶层模块规划。本文档仅保留为过渡说明：入库应是 command/facade/workflow，组合 `search -> storage -> rag`，而不是新增一个需要长期维护的核心模块。
+Ingest 不再作为 PaperOS 的顶层模块规划。本文档仅保留为过渡说明：入库应迁移到 `docs/modules/workflows/` 描述的 command/facade/workflow，组合 `search -> storage document processing -> rag`，而不是新增一个需要长期维护的核心模块。
 
 ## 职责
 
@@ -8,7 +8,8 @@ Ingest 不再作为 PaperOS 的顶层模块规划。本文档仅保留为过渡�
 - 根据 `PaperSearchResult.selected` 或用户确认决定入库对象；不要通过另一个 `/add` 命令再次 search。
 - 把 search DTO 转成 storage DTO 并写入 storage。
 - 归档 searcher 已验证的本地 PDF。
-- 触发 RAG 解析、chunk、embedding、index workflow。
+- 触发 storage document processing：PDF -> TEI -> normalized document -> chunks / FTS。
+- 后续由 RAG 触发 embedding/vector index/retrieval workflow。
 
 ## 不负责
 
@@ -29,7 +30,7 @@ choose selected candidate(s)
   ↓
 SearchStorageImportWorkflow.import_search_result(result)
   ↓
-storage upsert + object archival + rag_index_pdf job
+storage upsert + object archival + storage_parse_pdf job
   ↓
 storage-aware response formatter returns paper_id/object/job status
 ```

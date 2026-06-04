@@ -110,10 +110,10 @@ class StoragePresenter:
         pdf_count = getattr(summary, "pdf_count", 0)
         job_count = getattr(summary, "job_count", 0)
         lines = [
-            "Storage 入库：",
-            f"- papers: {imported}",
-            f"- PDF objects: {pdf_count}",
-            f"- RAG jobs: {job_count}",
+                "Storage 入库：",
+                f"- papers: {imported}",
+                f"- PDF objects: {pdf_count}",
+                f"- processing jobs: {job_count}",
         ]
         for idx, item in enumerate(results, start=1):
             title = self._short(getattr(item, "title", "") or "-", 72)

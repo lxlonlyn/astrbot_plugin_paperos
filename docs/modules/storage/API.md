@@ -54,16 +54,16 @@ paper_id = await repo.upsert_paper(
 不负责：
 
 - 下载 PDF。
-- 解析 PDF。
+- 调用 LLM 或 embedding provider。
 
 ### enqueue_job
 
-Repository 只保存和领取 job 状态，不实现 job 的业务逻辑。解析、chunk、embedding、index 等 worker 应放在 `paperos/rag/` 或上层 workflow。
+Repository 保存和领取 job 状态。PDF document processing worker 属于 storage；embedding/vector worker 属于 RAG。
 
 ```python
 job_id = await repo.enqueue_job(
-    job_type="rag_index_pdf",
-    dedupe_key=f"rag_index_pdf:{object_id}",
+    job_type="storage_parse_pdf",
+    dedupe_key=f"storage_parse_pdf:{object_id}",
     paper_id=paper_id,
     object_id=object_id,
     payload={"source_query": raw_query},
@@ -75,7 +75,8 @@ job_id = await repo.enqueue_job(
 - `job_type + dedupe_key` 应唯一，避免重复任务。
 - 支持 pending/running/done/failed。
 - 支持 stale lock 恢复。
-- 不在 storage 内部调用 parser、LLM 或 embedding provider。
+- storage document processing job 可以调用本地 GROBID/parser。
+- 不在 storage 内部调用 LLM 或 embedding provider。
 
 ### register_object
 
@@ -145,7 +146,7 @@ stored = await object_store.put_file(
 - `repository.register_object()`；
 - `repository.attach_object_to_current_version()`；
 - `repository.attach_object_to_fulltext_location()`；
-- 可选地 `repository.enqueue_job("rag_index_pdf", ...)`，实际消费方属于 RAG workflow；
+- 可选地 `repository.enqueue_job("storage_parse_pdf", ...)`，实际消费方属于 storage document processing workflow；
 - 可选地在长期 object 归档成功后清理 searcher 临时 PDF。
 
 返回 `SearchStorageImportSummary` / `SearchStorageImportResult`，包含 `paper_id`、`object_id`、`job_id`、是否归档 PDF、是否仅 metadata 入库、临时 PDF 是否已清理等信息。

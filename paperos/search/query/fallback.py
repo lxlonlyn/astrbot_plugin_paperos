@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from ..models import HypothesisKind, PaperHypothesis, SearchIntent, SearchPlan
+from ..models import HypothesisKind, PaperHypothesis, SearchContext, SearchIntent, SearchPlan
 
 _DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:A-Za-z0-9]+", re.I)
 _ARXIV_RE = re.compile(r"\b(?:arxiv:)?(\d{4}\.\d{4,5})(?:v\d+)?\b", re.I)
@@ -15,12 +15,16 @@ def contains_cjk(text: str) -> bool:
     return bool(_CJK_RE.search(text))
 
 
-def fallback_analyze(raw_query: str) -> SearchPlan:
+def fallback_analyze(raw_query: str, context: SearchContext | None = None) -> SearchPlan:
     q = raw_query.strip()
     has_cjk = contains_cjk(q)
     hypotheses: list[PaperHypothesis] = []
+    hint_queries = _clean_list((context.expanded_queries if context else []) + (context.preferred_concepts if context else []))
+    known_titles = _clean_list(context.known_titles if context else [])
 
-    for doi in _DOI_RE.findall(q):
+    identifier_text = " ".join([q] + _clean_list(context.known_identifiers if context else []))
+
+    for doi in _DOI_RE.findall(identifier_text):
         hypotheses.append(
             PaperHypothesis(
                 kind=HypothesisKind.DOI,
@@ -30,7 +34,7 @@ def fallback_analyze(raw_query: str) -> SearchPlan:
             )
         )
 
-    for arxiv_id in _ARXIV_RE.findall(q) + _OLD_ARXIV_RE.findall(q):
+    for arxiv_id in _ARXIV_RE.findall(identifier_text) + _OLD_ARXIV_RE.findall(identifier_text):
         hypotheses.append(
             PaperHypothesis(
                 kind=HypothesisKind.ARXIV,
@@ -40,8 +44,21 @@ def fallback_analyze(raw_query: str) -> SearchPlan:
             )
         )
 
-    for url in _URL_RE.findall(q):
+    for url in _URL_RE.findall(identifier_text):
         hypotheses.append(PaperHypothesis(kind=HypothesisKind.URL, confidence=0.8, url=url, search_queries=[url]))
+
+    for title in known_titles:
+        title_queries = [f'"{title}"', f'"{title}" pdf', f'"{title}" arxiv']
+        hypotheses.append(
+            PaperHypothesis(
+                kind=HypothesisKind.TITLE,
+                confidence=0.75,
+                title=title,
+                translated_title=title,
+                search_queries=title_queries + hint_queries[:2],
+                note="workflow-provided title hint",
+            )
+        )
 
     if not hypotheses:
         is_topic = any(
@@ -72,7 +89,7 @@ def fallback_analyze(raw_query: str) -> SearchPlan:
             intent = SearchIntent.TOPIC_DISCOVERY
             final_limit = 5
         else:
-            search_queries = [] if has_cjk else [q, f'"{q}" pdf', f'"{q}" arxiv']
+            search_queries = hint_queries if has_cjk else [q, f'"{q}" pdf', f'"{q}" arxiv'] + hint_queries
             hypotheses.append(
                 PaperHypothesis(
                     kind=HypothesisKind.FUZZY_TITLE,
@@ -101,3 +118,18 @@ def fallback_analyze(raw_query: str) -> SearchPlan:
         final_limit=final_limit,
         need_fulltext=True,
     )
+
+
+def _clean_list(values: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        item = re.sub(r"\s+", " ", str(value or "").strip())
+        if not item:
+            continue
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(item)
+    return cleaned

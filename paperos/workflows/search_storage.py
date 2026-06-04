@@ -129,7 +129,7 @@ class SearchStorageImportWorkflow:
         *,
         source_query: str | None = None,
         selection: str = "selected",
-        enqueue_rag: bool = True,
+        enqueue_parse: bool = True,
         cleanup_temporary_pdf: bool = False,
     ) -> SearchStorageImportSummary:
         candidates = self._candidates_to_import(result, selection=selection)
@@ -140,7 +140,7 @@ class SearchStorageImportWorkflow:
                     candidate,
                     source_query=source_query or (result.plan.raw_query if result.plan else None),
                     decision=f"search_{selection}",
-                    enqueue_rag=enqueue_rag,
+                    enqueue_parse=enqueue_parse,
                     cleanup_temporary_pdf=cleanup_temporary_pdf,
                 )
             )
@@ -152,7 +152,7 @@ class SearchStorageImportWorkflow:
         *,
         source_query: str | None = None,
         decision: str = "search_selected",
-        enqueue_rag: bool = True,
+        enqueue_parse: bool = True,
         cleanup_temporary_pdf: bool = False,
     ) -> SearchStorageImportResult:
         record = paper_candidate_to_record(candidate)
@@ -161,7 +161,7 @@ class SearchStorageImportWorkflow:
                 record=record,
                 source_query=source_query,
                 decision=decision,
-                enqueue_rag=enqueue_rag,
+                enqueue_parse=enqueue_parse,
                 cleanup_source_file=cleanup_temporary_pdf,
             )
         )

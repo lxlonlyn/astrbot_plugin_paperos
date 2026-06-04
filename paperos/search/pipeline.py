@@ -5,7 +5,7 @@ from astrbot.api import logger
 from ..config import PaperOSConfig
 from .acquire.verifier import FulltextVerifier
 from .crawl.targeted import TargetedPaperCrawler
-from .models import FulltextStatus, PaperCandidate, PaperSearchResult, SearchPlan
+from .models import FulltextStatus, PaperCandidate, PaperSearchResult, SearchContext, SearchPlan
 from .query.analyzer import AstrBotLLMQueryAnalyzer
 from .resolve.dedup import PaperDeduplicator
 from .resolve.disambiguator import PaperDisambiguator
@@ -32,13 +32,20 @@ class PaperSearchPipeline:
         self.disambiguator = disambiguator
         self.verifier = verifier
 
-    async def run(self, raw_query: str, *, event=None, need_fulltext: bool = True) -> PaperSearchResult:
+    async def run(
+        self,
+        raw_query: str,
+        *,
+        event=None,
+        need_fulltext: bool = True,
+        context: SearchContext | None = None,
+    ) -> PaperSearchResult:
         if not self.cfg.crawler.enabled:
             logger.debug("[PaperOS][Pipeline] aborted: crawler disabled")
             return PaperSearchResult(status="disabled", message="crawler disabled")
 
         logger.debug("[PaperOS][Pipeline] start raw_query=%r need_fulltext=%s", raw_query, need_fulltext)
-        plan = await self.query_analyzer.analyze(raw_query, event=event)
+        plan = await self.query_analyzer.analyze(raw_query, event=event, context=context)
         llm_need_fulltext = plan.need_fulltext
         plan.need_fulltext = bool(need_fulltext)
         logger.debug(
@@ -65,6 +72,7 @@ class PaperSearchPipeline:
                     "OpenReview/ACL/CVF/PMLR/arXiv URLs, or direct PDF URLs if you know them."
                 ),
                 event=event,
+                context=context,
             )
             candidates = await self._discover_score_dedup(plan)
             logger.debug(

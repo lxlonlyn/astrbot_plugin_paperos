@@ -9,7 +9,7 @@ from paperos.storage.sqlite.repository import SQLitePaperRepository
 from paperos.workflows.search_storage import SearchStorageImportWorkflow
 
 
-def test_import_search_result_persists_metadata_pdf_and_rag_job(tmp_path):
+def test_import_search_result_persists_metadata_pdf_and_parse_job(tmp_path):
     async def run():
         pdf_path = tmp_path / "searcher" / "fulltext" / "paper.pdf"
         pdf_path.parent.mkdir(parents=True)
@@ -58,6 +58,8 @@ def test_import_search_result_persists_metadata_pdf_and_rag_job(tmp_path):
         assert summary.results[0].temporary_pdf_removed is True
         assert not pdf_path.exists()
         assert await repo.find_by_identifier(doi="10.5555/attention") is not None
+        job = repo.conn.execute("SELECT job_type FROM paper_jobs WHERE id = ?", (summary.results[0].job_id,)).fetchone()
+        assert job["job_type"] == "storage_parse_pdf"
 
         await repo.aclose()
 

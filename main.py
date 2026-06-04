@@ -10,6 +10,7 @@ from .paperos.search.service import PaperSearchService
 from .paperos.storage.diagnostics import StorageDiagnostics
 from .paperos.storage.factory import PaperOSStorageContext, create_storage_context
 from .paperos.storage.presenter import StoragePresenter
+from .paperos.workflows.paper_discovery import PaperDiscoveryWorkflow
 from .paperos.workflows.search_storage import SearchStorageImportSummary, SearchStorageImportWorkflow
 
 
@@ -57,15 +58,20 @@ class PaperOSPlugin(Star):
             yield event.plain_result("用法：/paperos search attention is all you need")
             return
 
-        logger.debug("[PaperOS] command search raw=%r query=%r", raw_message, query_text)
-        result = await self.search_service.search(
-            raw_query=query_text,
-            event=event,
-            need_fulltext=True,
+        logger.debug("[PaperOS] command discovery raw=%r query=%r", raw_message, query_text)
+        discovery = await self._discover(query_text, event=event)
+        result = discovery.search_result
+        import_summary = discovery.import_summary
+
+        logger.debug(
+            "[PaperOS] discovery done papers=%d pdfs=%d parse_jobs=%d query=%r",
+            discovery.imported_count,
+            discovery.pdf_count,
+            len(discovery.storage_parse_job_ids),
+            query_text,
         )
 
         pdf = self._first_verified_pdf(result)
-        import_summary = await self._import_search_result(result, source_query=query_text)
         stored_pdf_path = self._first_imported_pdf_path(import_summary)
         text = self.presenter.format_search_result(result)
         if import_summary is not None:
@@ -138,40 +144,34 @@ class PaperOSPlugin(Star):
                 return pdf
         return None
 
-    async def _import_search_result(
-        self,
-        result: PaperSearchResult,
-        *,
-        source_query: str,
-    ) -> SearchStorageImportSummary | None:
-        if not result.candidates:
-            return None
+    async def _discover(self, query_text: str, *, event: AstrMessageEvent):
+        search_storage = None
         storage = await self._ensure_storage_context()
-        if storage is None:
-            return None
-        try:
-            workflow = SearchStorageImportWorkflow(
+        if storage is not None:
+            search_storage = SearchStorageImportWorkflow(
                 repository=storage.repository,
                 object_store=storage.object_store,
             )
-            summary = await workflow.import_search_result(
-                result,
-                source_query=source_query,
-                selection="selected",
-                enqueue_rag=True,
-                cleanup_temporary_pdf=True,
+        workflow = PaperDiscoveryWorkflow(
+            search_service=self.search_service,
+            search_storage=search_storage,
+        )
+        discovery = await workflow.discover_and_index(
+            query_text,
+            event=event,
+            need_fulltext=True,
+            auto_import=search_storage is not None,
+            selection="selected",
+            cleanup_temporary_pdf=True,
+            ignore_import_errors=True,
+        )
+        if discovery.import_error:
+            logger.warning(
+                "[PaperOS] discovery storage import failed query=%r: %s",
+                query_text,
+                discovery.import_error,
             )
-            logger.debug(
-                "[PaperOS] search result imported papers=%d pdfs=%d jobs=%d query=%r",
-                summary.imported_count,
-                summary.pdf_count,
-                summary.job_count,
-                source_query,
-            )
-            return summary
-        except Exception as exc:
-            logger.warning("[PaperOS] search result storage import failed query=%r: %r", source_query, exc)
-            return None
+        return discovery
 
     def _first_imported_pdf_path(self, summary: SearchStorageImportSummary | None) -> str | None:
         if summary is None:

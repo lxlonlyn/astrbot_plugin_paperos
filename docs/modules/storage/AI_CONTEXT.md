@@ -5,6 +5,7 @@
 ## 当前任务边界
 
 `paperos/storage/` 只负责本地持久化数据的保存、更新、查询和返回。
+它同时拥有已归档 PDF 的本地文档处理：PDF -> TEI -> normalized document -> chunks / FTS。
 
 Storage 负责：
 
@@ -12,7 +13,9 @@ Storage 负责：
 - object metadata 与本地 object store。
 - fulltext location 记录。
 - job 状态。
-- chunk、FTS、vector/index metadata 的持久化接口。
+- 本地 GROBID 服务或本地 parser adapter。
+- TEI XML、normalized document、chunk、FTS 和 document processing 状态。
+- vector/index metadata 的持久化接口。
 - 本地去重和稳定内部 ID。
 
 Storage 不负责：
@@ -21,8 +24,6 @@ Storage 不负责：
 - 网络下载 PDF。
 - 调用 LLM。
 - 调用 embedding provider。
-- PDF 解析。
-- chunk 切分策略。
 - RAG retrieval 或 answer generation。
 
 ## 为什么不能用 sha256 当 paper id
@@ -58,25 +59,42 @@ search.PaperSearchResult / search.PaperCandidate
   -> object_store.put_file(existing verified local PDF)
   -> repository.register_object()
   -> repository.attach_object_to_current_version()
-  -> repository.enqueue_job("rag_index_pdf")
+  -> repository.enqueue_job("storage_parse_pdf")
 ```
 
 Search 阶段下载并验证的 PDF 只是临时文件。storage 只接收已经存在的本地文件或 bytes，并将其归档为长期 object。
 
 当前设计不建议拆成 `/paperos search` 与 `/paperos add` 两段式流程，因为 searcher 中的候选 metadata 和临时 PDF 是同一次在线获取的结果。正确方式是在 `/paperos search` 这条 workflow 内完成 search -> storage 传递；如果 storage 成功归档 PDF，临时 searcher PDF 可以由 workflow 清理。Storage 自身仍不 import search，也不负责生成聊天返回文案。
 
-## 与 RAG 的关系
+## 文档处理边界
 
-RAG 负责解析、chunk、embedding 和检索逻辑。storage 只提供持久化接口：
+Storage 负责本地文档处理，允许调用本地 GROBID 服务或本地 parser：
 
 ```text
-rag parser/indexer
+storage object PDF
+  -> local GROBID/parser
+  -> TEI XML
+  -> normalized document
+  -> chunks
   -> repository.replace_chunks(...)
-  -> repository/vector metadata APIs
-  -> index_status update
+  -> FTS / document processing status
 ```
 
-Storage 可以保存 chunks、FTS 表、vector/index metadata，但不决定怎么解析、怎么切块、怎么调用 embedding provider、怎么排序检索结果。
+这里的 GROBID/local parser 是文档数据后处理，不是联网论文搜索，也不是 LLM/embedding 调用。
+
+## 与 RAG 的关系
+
+RAG 负责 embedding、vector index、retrieval 和回答/分析。它消费 storage 中已经存在的 chunks / normalized document：
+
+```text
+storage chunks / normalized document
+  -> rag embedding provider
+  -> vector index
+  -> hybrid retrieval / answer context
+  -> storage index status update
+```
+
+Storage 可以保存 vector/index metadata，但不调用 embedding provider，也不决定 RAG 排序和回答策略。
 
 ## 第一版推荐能力
 
@@ -89,4 +107,6 @@ Storage 可以保存 chunks、FTS 表、vector/index metadata，但不决定怎�
 - register object。
 - paper <-> object link。
 - current version 更新。
-- chunks / index status 持久化接口。
+- PDF -> TEI -> normalized document -> chunks / FTS。
+- 入库后排队 `storage_parse_pdf`；文档处理完成后可由 workflow 排队 `rag_embed_chunks`。
+- vector/index status 持久化接口。

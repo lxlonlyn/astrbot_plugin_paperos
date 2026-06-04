@@ -4,7 +4,7 @@ import asyncio
 import json
 
 from paperos.config import load_config
-from paperos.search.models import HypothesisKind, SearchIntent
+from paperos.search.models import HypothesisKind, SearchContext, SearchIntent
 from paperos.search.query.analyzer import AstrBotLLMQueryAnalyzer
 from tests.support.fakes import FakeEvent, FakeLLMContext
 
@@ -52,6 +52,47 @@ def test_llm_query_analyzer_falls_back_when_llm_returns_non_json():
 
         assert plan.hypotheses
         assert plan.hypotheses[0].doi == "10.1000/example"
+
+    asyncio.run(run())
+
+
+def test_llm_query_analyzer_includes_search_context_hints():
+    async def run():
+        completion = json.dumps(
+            {
+                "language": "en",
+                "intent": "find_specific",
+                "hypotheses": [
+                    {
+                        "kind": "title",
+                        "confidence": 0.85,
+                        "title": "1-Lipschitz Neural Distance Fields",
+                        "translated_title": "1-Lipschitz Neural Distance Fields",
+                    }
+                ],
+                "max_candidates": 10,
+                "final_limit": 1,
+                "need_fulltext": True,
+            }
+        )
+        context = FakeLLMContext(completion, current_provider_id="provider-from-chat")
+        analyzer = AstrBotLLMQueryAnalyzer(context=context, cfg=load_config({}))
+        search_context = SearchContext(
+            expanded_queries=['"1-Lipschitz Neural Distance Fields" Computer Graphics Forum'],
+            known_titles=["1-Lipschitz Neural Distance Fields"],
+            known_identifiers=["arXiv:2407.09505"],
+            negative_hints=["atomic gravimeter"],
+            local_context_summary="Local notes mention SGP 2024.",
+        )
+
+        await analyzer.analyze("查找这篇 1-lipschitz neural distance fields", event=FakeEvent(), context=search_context)
+
+        prompt = context.llm_calls[0]["prompt"]
+        assert "Workflow-provided SearchContext hints" in prompt
+        assert "1-Lipschitz Neural Distance Fields" in prompt
+        assert "arXiv:2407.09505" in prompt
+        assert "atomic gravimeter" in prompt
+        assert "Do not mention or assume their module source" in prompt
 
     asyncio.run(run())
 

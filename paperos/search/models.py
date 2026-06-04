@@ -35,6 +35,23 @@ class FulltextStatus(str, Enum):
 
 
 @dataclass
+class SearchContext:
+    """Pure workflow-provided hints for search planning.
+
+    SearchContext is intentionally just data. The search module must not infer
+    where it came from and must not import or call storage/rag to enrich it.
+    """
+
+    original_query: str | None = None
+    expanded_queries: list[str] = field(default_factory=list)
+    known_titles: list[str] = field(default_factory=list)
+    known_identifiers: list[str] = field(default_factory=list)
+    preferred_concepts: list[str] = field(default_factory=list)
+    negative_hints: list[str] = field(default_factory=list)
+    local_context_summary: str | None = None
+
+
+@dataclass
 class PaperHypothesis:
     kind: HypothesisKind
     confidence: float = 0.5

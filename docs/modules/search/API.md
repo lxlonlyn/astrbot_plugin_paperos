@@ -9,6 +9,7 @@ result = await PaperSearchService.search(
     raw_query: str,
     event=None,
     need_fulltext: bool = True,
+    context: SearchContext | None = None,
 )
 ```
 
@@ -19,6 +20,23 @@ result = await PaperSearchService.search(
 - 用户明确要找论文。
 - `PaperSearchService` 本身只发现候选；AstrBot command/workflow 会在同一次 `/paperos search` 中决定是否写入 storage。
 - 显式的“扩充本地论文库”流程需要先发现并验证候选。
+- workflow 已有本地上下文、历史线索或 RAG expansion hints 时，可以构造 `SearchContext` 传入 search；searcher 只把它当作纯数据提示。
+
+### SearchContext
+
+`paperos.search.models.SearchContext` 是 searcher 的可选输入 DTO：
+
+- `original_query`
+- `expanded_queries`
+- `known_titles`
+- `known_identifiers`
+- `preferred_concepts`
+- `negative_hints`
+- `local_context_summary`
+
+它不表示 searcher 可以调用 storage/rag。相反，storage/rag/command/workflow
+如果有外部线索，应先在 searcher 外部构造这个 DTO，再显式调用
+`PaperSearchService.search(...)`。
 
 ### 不推荐外部调用的内部类
 

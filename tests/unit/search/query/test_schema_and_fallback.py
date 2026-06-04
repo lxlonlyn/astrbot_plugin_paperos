@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from paperos.search.models import HypothesisKind, SearchIntent
+from paperos.search.models import HypothesisKind, SearchContext, SearchIntent
 from paperos.search.query.fallback import fallback_analyze
 from paperos.search.query.schema import parse_search_plan
 
@@ -46,3 +46,19 @@ def test_fallback_analyze_extracts_known_identifiers():
     assert HypothesisKind.DOI in kinds
     assert plan.intent == SearchIntent.FIND_MULTIPLE
     assert plan.need_fulltext is True
+
+
+def test_fallback_analyze_uses_search_context_hints():
+    context = SearchContext(
+        known_titles=["1-Lipschitz Neural Distance Fields"],
+        known_identifiers=["arXiv:2407.09505"],
+        expanded_queries=['"1-Lipschitz Neural Distance Fields" "Computer Graphics Forum"'],
+    )
+
+    plan = fallback_analyze("帮我找一下这篇论文", context=context)
+
+    assert any(hyp.kind == HypothesisKind.ARXIV and hyp.arxiv_id == "2407.09505" for hyp in plan.hypotheses)
+    title_hypotheses = [hyp for hyp in plan.hypotheses if hyp.kind == HypothesisKind.TITLE]
+    assert title_hypotheses
+    assert title_hypotheses[0].translated_title == "1-Lipschitz Neural Distance Fields"
+    assert any("Computer Graphics Forum" in query for query in title_hypotheses[0].search_queries)

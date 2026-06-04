@@ -127,12 +127,13 @@ searcher/provider 找到并验证过的全文位置。
 
 推荐 job type：
 
-- `rag_index_pdf`
-- `rag_reindex_paper`
+- `storage_parse_pdf`
+- `storage_reparse_pdf`
+- `rag_embed_chunks`
 - `build_fts`
 - `build_vector_index`
 
-这些 job 只表示持久化队列状态；具体 parser/chunker/embedding/indexer worker 属于 `paperos/rag/`。
+`storage_parse_pdf`、FTS 和 chunk 相关 job 属于 storage document processing。`rag_embed_chunks` / `build_vector_index` / embedding 相关 worker 属于 `paperos/rag/`。
 
 推荐状态：
 
@@ -159,7 +160,63 @@ searcher/provider 找到并验证过的全文位置。
 
 `paper_chunks_fts` 是 SQLite FTS5 虚表，用于本地关键词检索。
 
-`paper_chunks` 是 embedding 的 source of truth。chunk 的生成策略和 embedding 调用属于 RAG。
+`paper_chunks` 是 embedding 的 source of truth。chunk 的生成策略属于 storage document processing；embedding 调用属于 RAG。
+
+扩展字段：
+
+- `parser_run_id`
+- `chunk_type`
+- `section_path`
+- `content_hash`
+- `embedding_text`
+- `source_block_ids_json`
+- `prev_chunk_id`
+- `next_chunk_id`
+
+`text` 保存原始 chunk 正文；`embedding_text` 保存未来传给 embedding provider 的格式化文本。storage 生成 `embedding_text`，但不调用 embedding provider。
+
+## parser_runs
+
+记录每次 PDF 文档处理。
+
+关键字段：
+
+- `paper_id`
+- `version_id`
+- `object_id`
+- `parser_name`
+- `parser_version`
+- `status`
+- `raw_output_object_id`
+- `normalized_object_id`
+- `message`
+- `created_at`, `updated_at`
+
+raw TEI XML 和 normalized document JSON 作为 object store 中的长期对象，由 `raw_output_object_id` 和 `normalized_object_id` 关联。
+
+## document_sections / document_blocks
+
+`document_sections` 保存章节树；`document_blocks` 保存线性文档块。
+
+典型 block type：
+
+- `title`
+- `abstract`
+- `paragraph`
+- `formula`
+- `figure_caption`
+- `table_caption`
+- `list_item`
+- `footnote`
+- `reference_context`
+
+## extracted_assets
+
+记录图、表、公式等解析资产。资产文件本身仍通过 `objects` 表和 object store 保存。
+
+## paper_references
+
+记录 bibliography。`resolved_paper_id` 仅保存已解析出的本地关联；如果需要 Crossref/OpenAlex/Semantic Scholar 等外部解析，应由 search/enrichment workflow 处理，不属于 storage。
 
 ## index_status
 
@@ -175,4 +232,4 @@ version
 updated_at
 ```
 
-index status 只描述持久化状态，不表示 storage 负责构建索引。
+index status 只描述持久化状态。FTS/document processing 状态可由 storage 更新；vector/embedding index 状态由 RAG 更新。

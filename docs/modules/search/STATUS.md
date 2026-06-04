@@ -16,14 +16,15 @@
 - fulltext PDF 下载、落盘与严格验证。
 - presenter 格式化。
 - AstrBot command `/paperos search` 与 LLM tool `paperos_search_paper`。
-- `/paperos search` 在 storage 启用时会把同一次搜索结果交给 `SearchStorageImportWorkflow` 入库，归档 verified PDF 到 object store，排队 `rag_index_pdf`，并改用 storage object 路径发送文件。
+- `/paperos search` 在 storage 启用时会把同一次搜索结果交给 `SearchStorageImportWorkflow` 入库，归档 verified PDF 到 object store，排队后续文档处理任务，并改用 storage object 路径发送文件。
 
 ## 未实现
 
 - 多 provider 聚合。
 - PaperOS 自己维护的通用网页搜索后端。
 - CORE/OpenAlex/Semantic Scholar 等学术 API 主链路。
-- PDF 解析、chunk、embedding。
+- storage document processing worker：PDF -> TEI -> normalized document -> chunks / FTS。
+- RAG embedding/vector indexer。
 - RAG retrieval。
 
 ## 重要边界
@@ -46,6 +47,6 @@ User query
 
 `FulltextStatus.VERIFIED_PDF` 表示候选 URL 已下载到 AstrBot 插件数据目录
 `get_astrbot_data_path()/plugin_data/astrbot_plugin_paperos/searcher/fulltext/`，
-并通过 PDF 文件头、大小限制、SHA-256 落盘去重和 `pypdf` 页数校验。长期入库、对象归档、解析任务排队由 command/workflow 层调用 storage 完成。
+并通过 PDF 文件头、大小限制、SHA-256 落盘去重和 `pypdf` 页数校验。长期入库、对象归档、document processing 任务排队由 command/workflow 层调用 storage 完成。
 
 Legacy CORE provider 代码仍保留在 `paperos.search.providers`、`core_client.py` 等文件中，但当前 `PaperSearchService` 不会把它们接入默认搜索流程。

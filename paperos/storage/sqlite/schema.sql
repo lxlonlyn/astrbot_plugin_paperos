@@ -162,16 +162,118 @@ CREATE INDEX IF NOT EXISTS idx_paper_jobs_ready
     ON paper_jobs(status, available_at, priority, created_at);
 CREATE INDEX IF NOT EXISTS idx_paper_jobs_paper_id ON paper_jobs(paper_id);
 
+CREATE TABLE IF NOT EXISTS parser_runs (
+    id TEXT PRIMARY KEY,
+    paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    version_id TEXT REFERENCES paper_versions(id) ON DELETE SET NULL,
+    object_id TEXT REFERENCES objects(id) ON DELETE SET NULL,
+    parser_name TEXT NOT NULL,
+    parser_version TEXT,
+    status TEXT NOT NULL,
+    raw_output_object_id TEXT REFERENCES objects(id) ON DELETE SET NULL,
+    normalized_object_id TEXT REFERENCES objects(id) ON DELETE SET NULL,
+    message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_parser_runs_paper_id ON parser_runs(paper_id);
+CREATE INDEX IF NOT EXISTS idx_parser_runs_object_id ON parser_runs(object_id);
+CREATE INDEX IF NOT EXISTS idx_parser_runs_status ON parser_runs(status);
+
+CREATE TABLE IF NOT EXISTS document_sections (
+    id TEXT PRIMARY KEY,
+    paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    parser_run_id TEXT NOT NULL REFERENCES parser_runs(id) ON DELETE CASCADE,
+    parent_section_id TEXT REFERENCES document_sections(id) ON DELETE SET NULL,
+    title TEXT,
+    level INTEGER NOT NULL DEFAULT 0,
+    order_index INTEGER NOT NULL,
+    page_start INTEGER,
+    page_end INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_sections_paper_id ON document_sections(paper_id);
+CREATE INDEX IF NOT EXISTS idx_document_sections_parser_run_id ON document_sections(parser_run_id);
+
+CREATE TABLE IF NOT EXISTS document_blocks (
+    id TEXT PRIMARY KEY,
+    paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    parser_run_id TEXT NOT NULL REFERENCES parser_runs(id) ON DELETE CASCADE,
+    section_id TEXT REFERENCES document_sections(id) ON DELETE SET NULL,
+    block_index INTEGER NOT NULL,
+    block_type TEXT NOT NULL,
+    text TEXT,
+    page_start INTEGER,
+    page_end INTEGER,
+    coords_json TEXT NOT NULL DEFAULT '{}',
+    content_hash TEXT,
+    UNIQUE(parser_run_id, block_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_blocks_paper_id ON document_blocks(paper_id);
+CREATE INDEX IF NOT EXISTS idx_document_blocks_parser_run_id ON document_blocks(parser_run_id);
+CREATE INDEX IF NOT EXISTS idx_document_blocks_section_id ON document_blocks(section_id);
+CREATE INDEX IF NOT EXISTS idx_document_blocks_content_hash ON document_blocks(content_hash);
+
+CREATE TABLE IF NOT EXISTS extracted_assets (
+    id TEXT PRIMARY KEY,
+    paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    parser_run_id TEXT NOT NULL REFERENCES parser_runs(id) ON DELETE CASCADE,
+    asset_type TEXT NOT NULL,
+    label TEXT,
+    caption TEXT,
+    page INTEGER,
+    coords_json TEXT NOT NULL DEFAULT '{}',
+    object_id TEXT REFERENCES objects(id) ON DELETE SET NULL,
+    text_object_id TEXT REFERENCES objects(id) ON DELETE SET NULL,
+    linked_block_id TEXT REFERENCES document_blocks(id) ON DELETE SET NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_extracted_assets_paper_id ON extracted_assets(paper_id);
+CREATE INDEX IF NOT EXISTS idx_extracted_assets_parser_run_id ON extracted_assets(parser_run_id);
+CREATE INDEX IF NOT EXISTS idx_extracted_assets_type ON extracted_assets(asset_type);
+
+CREATE TABLE IF NOT EXISTS paper_references (
+    id TEXT PRIMARY KEY,
+    paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    parser_run_id TEXT NOT NULL REFERENCES parser_runs(id) ON DELETE CASCADE,
+    ref_key TEXT,
+    raw_text TEXT NOT NULL,
+    title TEXT,
+    authors_json TEXT NOT NULL DEFAULT '[]',
+    year INTEGER,
+    venue TEXT,
+    doi TEXT,
+    arxiv_id TEXT,
+    resolved_paper_id TEXT REFERENCES papers(id) ON DELETE SET NULL,
+    confidence REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_paper_references_paper_id ON paper_references(paper_id);
+CREATE INDEX IF NOT EXISTS idx_paper_references_parser_run_id ON paper_references(parser_run_id);
+CREATE INDEX IF NOT EXISTS idx_paper_references_doi ON paper_references(doi);
+CREATE INDEX IF NOT EXISTS idx_paper_references_arxiv_id ON paper_references(arxiv_id);
+
 CREATE TABLE IF NOT EXISTS paper_chunks (
     id TEXT PRIMARY KEY,
     paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
     version_id TEXT REFERENCES paper_versions(id) ON DELETE CASCADE,
     object_id TEXT REFERENCES objects(id) ON DELETE CASCADE,
+    parser_run_id TEXT REFERENCES parser_runs(id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
+    chunk_type TEXT NOT NULL DEFAULT 'paragraph',
     section_title TEXT,
+    section_path TEXT,
     page_start INTEGER,
     page_end INTEGER,
     text TEXT NOT NULL,
+    embedding_text TEXT,
+    content_hash TEXT,
+    source_block_ids_json TEXT NOT NULL DEFAULT '[]',
+    prev_chunk_id TEXT REFERENCES paper_chunks(id) ON DELETE SET NULL,
+    next_chunk_id TEXT REFERENCES paper_chunks(id) ON DELETE SET NULL,
     token_count INTEGER,
     metadata_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
@@ -179,6 +281,8 @@ CREATE TABLE IF NOT EXISTS paper_chunks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_paper_chunks_paper_id ON paper_chunks(paper_id);
+CREATE INDEX IF NOT EXISTS idx_paper_chunks_parser_run_id ON paper_chunks(parser_run_id);
+CREATE INDEX IF NOT EXISTS idx_paper_chunks_content_hash ON paper_chunks(content_hash);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS paper_chunks_fts USING fts5(
     chunk_id UNINDEXED,

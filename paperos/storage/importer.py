@@ -14,7 +14,7 @@ class PaperImportRequest:
     record: PaperRecordDraft
     source_query: str | None = None
     decision: str = "search_selected"
-    enqueue_rag: bool = True
+    enqueue_parse: bool = True
     cleanup_source_file: bool = False
 
 
@@ -82,10 +82,10 @@ class PaperStorageImporter:
                 url=verified.url,
                 object_id=object_id,
             )
-            if request.enqueue_rag:
+            if request.enqueue_parse:
                 job_id = await self.repository.enqueue_job(
-                    "rag_index_pdf",
-                    dedupe_key=f"rag_index_pdf:{object_id}",
+                    "storage_parse_pdf",
+                    dedupe_key=f"storage_parse_pdf:{object_id}",
                     paper_id=paper_id,
                     object_id=object_id,
                     payload={"source_query": request.source_query},

@@ -32,10 +32,9 @@ class FakeQueryAnalyzer:
         self.plan = plan
         self.calls: list[str] = []
 
-    async def analyze(self, raw_query: str, *, event=None):
+    async def analyze(self, raw_query: str, *, event=None, context=None):
         self.calls.append(raw_query)
         return self.plan
 
-    async def repair(self, raw_query: str, previous_plan, failure_reason: str, *, event=None):
+    async def repair(self, raw_query: str, previous_plan, failure_reason: str, *, event=None, context=None):
         return previous_plan
-

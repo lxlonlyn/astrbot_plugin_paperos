@@ -2,7 +2,7 @@
 
 ## Search
 
-- `paperos.search.service.PaperSearchService.search(raw_query, event=None, need_fulltext=True)`
+- `paperos.search.service.PaperSearchService.search(raw_query, event=None, need_fulltext=True, context=None)`
   - 在线查找论文候选并尽力下载、验证 PDF。
   - 不写数据库。
   - 不构建 embedding。
@@ -25,18 +25,26 @@
   - 返回 `StoredObject`。
 
 - `paperos.workflows.search_storage.SearchStorageImportWorkflow.import_search_result(result, source_query=None)`
-  - search/storage/RAG-job 边界 workflow。
+  - search/storage/document-processing 边界 workflow。
   - upsert paper metadata。
   - 将 verified PDF 归档到 object store。
   - 注册 object/version/fulltext-location link。
-  - 可选地入队 `rag_index_pdf`；实际 parser/chunker/indexer 属于 RAG workflow。
+  - 可选地入队 storage 文档处理 job `storage_parse_pdf`；GROBID/parser/chunker 属于 storage。
   - 已接入 `/paperos search` 的 AstrBot command workflow。
+
+## Workflows
+
+- `paperos.workflows.paper_discovery.PaperDiscoveryWorkflow.discover_and_index(query, need_fulltext=True, auto_import=True)`
+  - 用户级 discovery pipeline。
+  - 第一阶段同步执行 search 和 storage import。
+  - 后续 storage document processing / RAG embedding 通过 `paper_jobs` 表表达。
+  - 返回 `DiscoveryPipelineResult`，包含 search result、import summary、`storage_parse_job_ids`、`rag_job_ids` 和可选 `import_error`。
 
 ## AstrBot Commands
 
 - `/paperos search <query>`
-  - 调用 search。
-  - storage 启用时自动导入同一次搜索结果，归档 verified PDF，入队 `rag_index_pdf`。
+  - 调用 `PaperDiscoveryWorkflow.discover_and_index(...)`。
+  - storage 启用时自动导入同一次搜索结果，归档 verified PDF，并入队后续文档处理。
   - 发送文件时优先使用 storage object 路径。
 
 - `/paperos storage status`
@@ -47,4 +55,4 @@
 
 ## RAG
 
-RAG 从本地 storage 读取 paper/object/chunk/index 数据，不调用 search。它负责解析、chunk、embedding、index、retrieval 和基于本地证据的分析。若本地没有论文，应由用户显式调用 search 相关命令或上层 workflow 先扩充本地库。
+RAG 从本地 storage 读取 paper/chunk/normalized document/index 数据，不调用 search。它负责 `rag_embed_chunks`、vector index、retrieval 和基于本地证据的分析。PDF -> TEI -> chunks / FTS 属于 storage。若本地没有论文，应由用户显式调用 search 相关命令或上层 workflow 先扩充本地库。

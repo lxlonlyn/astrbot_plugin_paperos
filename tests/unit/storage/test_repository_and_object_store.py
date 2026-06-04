@@ -50,8 +50,8 @@ def test_repository_object_store_roundtrip(tmp_path):
         await repo.attach_object_to_current_version(paper_id=paper_id, object_id=object_id, role="pdf")
 
         job_id = await repo.enqueue_job(
-            "rag_index_pdf",
-            dedupe_key=f"rag_index_pdf:{object_id}",
+            "storage_parse_pdf",
+            dedupe_key=f"storage_parse_pdf:{object_id}",
             paper_id=paper_id,
             object_id=object_id,
             payload={"source_query": "attention"},
@@ -131,6 +131,8 @@ def test_storage_importer_persists_verified_pdf_and_provenance(tmp_path):
         assert row["size_bytes"] == len(b"%PDF-1.4\n% verified upstream\n")
         assert row["content_type"] == "application/pdf"
         assert row["page_count"] == 15
+        job = repo.conn.execute("SELECT job_type FROM paper_jobs WHERE id = ?", (result.job_id,)).fetchone()
+        assert job["job_type"] == "storage_parse_pdf"
 
         await repo.aclose()
 
@@ -177,6 +179,61 @@ def test_initialize_rebuilds_early_incompatible_schema(tmp_path):
         assert "final_url" in columns
         assert "page_count" in columns
         assert repo.conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 1
+        await repo.aclose()
+
+    asyncio.run(run())
+
+
+def test_document_processing_schema_and_extended_chunks(tmp_path):
+    async def run():
+        repo = SQLitePaperRepository(tmp_path / "paperos.sqlite3", StorageConfig())
+        await repo.initialize()
+        draft = PaperRecordDraft(title="Attention Is All You Need", year=2017, doi="10.5555/attention", source="test")
+        paper_id = await repo.upsert_paper(draft, source_query="attention")
+        version_id = repo.conn.execute("SELECT current_version_id FROM papers WHERE id=?", (paper_id,)).fetchone()["current_version_id"]
+
+        parser_run_id = "pr_test"
+        repo.conn.execute(
+            """
+            INSERT INTO parser_runs(
+                id, paper_id, version_id, parser_name, parser_version, status,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, 'test-parser', '0', 'done', 'now', 'now')
+            """,
+            (parser_run_id, paper_id, version_id),
+        )
+        await repo.replace_chunks(
+            paper_id=paper_id,
+            version_id=version_id,
+            object_id=None,
+            parser_run_id=parser_run_id,
+            chunks=[
+                {
+                    "chunk_type": "paragraph",
+                    "section_title": "Model Architecture",
+                    "section_path": "Model Architecture / Attention",
+                    "text": "Scaled dot-product attention text.",
+                    "embedding_text": "Paper: Attention Is All You Need\nSection: Model Architecture / Attention\nType: paragraph\n\nContent:\nScaled dot-product attention text.",
+                    "content_hash": "hash-1",
+                    "source_block_ids": ["blk_1"],
+                }
+            ],
+        )
+        row = repo.conn.execute(
+            """
+            SELECT parser_run_id, chunk_type, section_path, embedding_text,
+                   content_hash, source_block_ids_json
+            FROM paper_chunks WHERE paper_id=?
+            """,
+            (paper_id,),
+        ).fetchone()
+        assert row["parser_run_id"] == parser_run_id
+        assert row["chunk_type"] == "paragraph"
+        assert row["section_path"] == "Model Architecture / Attention"
+        assert row["embedding_text"].startswith("Paper: Attention Is All You Need")
+        assert row["content_hash"] == "hash-1"
+        assert row["source_block_ids_json"] == '["blk_1"]'
+
         await repo.aclose()
 
     asyncio.run(run())

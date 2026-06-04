@@ -21,7 +21,7 @@
 
 ## 当前结构
 
-`main.py` 负责把 AstrBot command/tool 组合到核心模块上。`/paperos search` 会先调用 search service，再在 storage 启用时调用 `SearchStorageImportWorkflow.import_search_result(...)`，最后用 presenter 输出搜索结果和入库摘要。
+`main.py` 负责把 AstrBot command/tool 组合到核心模块上。`/paperos search` 当前通过 `PaperDiscoveryWorkflow.discover_and_index(...)` 执行用户级 pipeline：先调用 search service，再在 storage 启用时通过 `SearchStorageImportWorkflow` 完成 narrow storage import，最后用 presenter 输出搜索结果和入库摘要。
 
 当前命令：
 

@@ -46,14 +46,14 @@ await repo.attach_object_to_current_version(paper_id=paper_id, object_id=object_
 
 更新 `papers.current_version_id` 和 `paper_versions.is_current`。旧 object 可以标记 `deleted_at` 或进入 GC，但不要混淆 paper identity。
 
-## 我想提交后续处理任务
+## 我想提交后续文档处理任务
 
-当前 searcher 已负责临时 PDF 下载和验证。storage 只记录任务状态；解析、chunk、embedding、index 的执行方应在 RAG workflow：
+当前 searcher 已负责临时 PDF 下载和验证。storage 可以记录并消费本地文档处理任务；PDF -> TEI -> normalized document -> chunks / FTS 的执行方属于 storage：
 
 ```python
 await repo.enqueue_job(
-    job_type="rag_index_pdf",
-    dedupe_key=f"rag_index_pdf:{object_id}",
+    job_type="storage_parse_pdf",
+    dedupe_key=f"storage_parse_pdf:{object_id}",
     paper_id=paper_id,
     object_id=object_id,
     payload={"source_query": query},
@@ -62,4 +62,4 @@ await repo.enqueue_job(
 
 ## 我想做 RAG 检索
 
-storage 只提供 chunks、object path、job 和 index status 的持久化接口。parser、chunker、embedding、retrieval、analysis 都放到 `paperos/rag/`。
+storage 提供 chunks、normalized document、FTS、object path、job 和 index status 的持久化接口。embedding、vector retrieval、context builder、analysis 放到 `paperos/rag/`。

@@ -2,7 +2,7 @@
 
 `paperos.search` is responsible for online paper acquisition. It does not persist papers and does not build embeddings.
 
-## Corrected pipeline
+## Searcher-internal acquisition pipeline
 
 ```text
 User query
@@ -13,6 +13,23 @@ User query
   -> FulltextVerifier
   -> PaperSearchResult
 ```
+
+`PaperSearchPipeline` is the searcher-internal acquisition pipeline. It is not
+the cross-module PaperOS workflow pipeline and must not import `paperos.storage`
+or `paperos.rag`. Outer command/workflow code may call search, then pass the
+result to storage or RAG-related stages.
+
+## SearchContext hints
+
+`PaperSearchService.search(...)` may receive an optional `SearchContext` from an
+outer workflow. `SearchContext` is a pure DTO containing strings such as expanded
+English queries, known titles, known identifiers, preferred concepts, negative
+hints, and a short local context summary.
+
+Searcher consumes those values only as planning hints. It must not know whether
+the hints came from RAG, storage, user history, config, or a command handler. In
+particular, searcher must not call RAG or storage to create or enrich
+`SearchContext`.
 
 ## LLM usage
 

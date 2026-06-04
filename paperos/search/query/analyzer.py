@@ -8,7 +8,7 @@ from typing import Any
 from astrbot.api import logger
 
 from ...config import PaperOSConfig
-from ..models import HypothesisKind, PaperHypothesis, SearchIntent
+from ..models import HypothesisKind, PaperHypothesis, SearchContext, SearchIntent
 from .fallback import fallback_analyze
 from .prompts import (
     build_query_analyzer_prompt,
@@ -25,17 +25,23 @@ class AstrBotLLMQueryAnalyzer:
         self.context = context
         self.cfg = cfg
 
-    async def analyze(self, raw_query: str, *, event: Any | None = None) -> SearchPlan:
+    async def analyze(
+        self,
+        raw_query: str,
+        *,
+        event: Any | None = None,
+        context: SearchContext | None = None,
+    ) -> SearchPlan:
         if not self.cfg.query_analyzer.enabled:
-            return fallback_analyze(raw_query)
+            return fallback_analyze(raw_query, context=context)
 
         provider_id = await self._resolve_provider_id(event)
         if not provider_id:
             logger.warning("[PaperOS] no LLM provider available; using fallback query analyzer")
-            return fallback_analyze(raw_query)
+            return fallback_analyze(raw_query, context=context)
 
         use_web_search = self._should_use_astrbot_web_search(event)
-        prompt = build_query_analyzer_prompt(raw_query)
+        prompt = build_query_analyzer_prompt(raw_query, context=context)
         try:
             resp = await self._generate(provider_id=provider_id, prompt=prompt)
             data = self._extract_json(resp.completion_text)
@@ -45,15 +51,23 @@ class AstrBotLLMQueryAnalyzer:
                 max_hypotheses=self.cfg.query_analyzer.max_hypotheses,
             )
             if not plan.hypotheses:
-                return fallback_analyze(raw_query)
+                return fallback_analyze(raw_query, context=context)
             if use_web_search:
                 await self._augment_plan_with_astrbot_web_search(plan, event=event)
             return plan
         except Exception as exc:
             logger.warning(f"[PaperOS] LLM query analyzer failed; fallback used: {exc!r}")
-            return fallback_analyze(raw_query)
+            return fallback_analyze(raw_query, context=context)
 
-    async def repair(self, raw_query: str, previous_plan: SearchPlan, failure_reason: str, *, event: Any | None = None) -> SearchPlan:
+    async def repair(
+        self,
+        raw_query: str,
+        previous_plan: SearchPlan,
+        failure_reason: str,
+        *,
+        event: Any | None = None,
+        context: SearchContext | None = None,
+    ) -> SearchPlan:
         if not self.cfg.query_analyzer.enabled:
             return previous_plan
         provider_id = await self._resolve_provider_id(event)
@@ -62,7 +76,7 @@ class AstrBotLLMQueryAnalyzer:
         try:
             previous_json = json.dumps(previous_plan.raw_llm_output or {}, ensure_ascii=False)
             use_web_search = self._should_use_astrbot_web_search(event)
-            prompt = build_repair_prompt(raw_query, previous_json, failure_reason)
+            prompt = build_repair_prompt(raw_query, previous_json, failure_reason, context=context)
             resp = await self._generate(provider_id=provider_id, prompt=prompt)
             data = self._extract_json(resp.completion_text)
             plan = parse_search_plan(data, raw_query=raw_query, max_hypotheses=self.cfg.query_analyzer.max_hypotheses)

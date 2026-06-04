@@ -8,7 +8,7 @@ from ..config import PaperOSConfig
 from .acquire.verifier import FulltextVerifier
 from .crawl.domain_resolver import DomainResolver
 from .crawl.targeted import TargetedPaperCrawler
-from .models import PaperSearchResult
+from .models import PaperSearchResult, SearchContext
 from .pipeline import PaperSearchPipeline
 from .query.analyzer import AstrBotLLMQueryAnalyzer
 from .resolve.dedup import PaperDeduplicator
@@ -44,17 +44,33 @@ class PaperSearchService:
             cfg.core_api.enabled,
         )
 
-    async def search(self, raw_query: str, *, event=None, need_fulltext: bool = True) -> PaperSearchResult:
+    async def search(
+        self,
+        raw_query: str,
+        *,
+        event=None,
+        need_fulltext: bool = True,
+        context: SearchContext | None = None,
+    ) -> PaperSearchResult:
         """Search papers from a natural-language request.
 
         The LLM may propose concrete source URLs/IDs. The crawler verifies and
         downloads candidates. Persistence is still the storage module's job.
+        ``context`` is an optional pure-data hint object prepared by an outer
+        workflow; search does not know whether those hints came from RAG,
+        storage, user input, or configuration.
         """
-        return await self.pipeline.run(raw_query=raw_query, event=event, need_fulltext=need_fulltext)
+        return await self.pipeline.run(raw_query=raw_query, event=event, need_fulltext=need_fulltext, context=context)
 
-    async def find_paper(self, raw_query: str, *, event=None) -> PaperSearchResult:
+    async def find_paper(
+        self,
+        raw_query: str,
+        *,
+        event=None,
+        context: SearchContext | None = None,
+    ) -> PaperSearchResult:
         """Backward-compatible alias for old command/tool code."""
-        return await self.search(raw_query, event=event, need_fulltext=True)
+        return await self.search(raw_query, event=event, need_fulltext=True, context=context)
 
     async def aclose(self) -> None:
         await self.pipeline.aclose()
