@@ -5,12 +5,47 @@ import sqlite3
 
 from paperos.storage.config import StorageConfig
 from paperos.storage.diagnostics import StorageDiagnostics
+from paperos.storage.document.grobid_models import DocumentBlock, DocumentSection, NormalizedDocument
 from paperos.storage.factory import PaperOSStorageContext
 from paperos.storage.importer import PaperImportRequest, PaperStorageImporter
 from paperos.storage.models import FulltextLocationRecord, PaperRecordDraft
 from paperos.storage.objects import LocalFileObjectStore
 from paperos.storage.paths import PaperOSPaths
 from paperos.storage.sqlite.repository import SQLitePaperRepository
+
+
+class FakeDocumentProcessor:
+    async def process_pdf(self, pdf_path):
+        document = NormalizedDocument(
+            title="Attention Is All You Need",
+            sections=[DocumentSection(title="Introduction", order_index=0, level=1)],
+            blocks=[
+                DocumentBlock(
+                    block_index=0,
+                    block_type="paragraph",
+                    text="This is parsed document text.",
+                    section_index=0,
+                    content_hash="hash-parsed",
+                )
+            ],
+        )
+        normalized = {
+            "title": document.title,
+            "sections": [{"title": "Introduction"}],
+            "blocks": [{"text": "This is parsed document text."}],
+        }
+        chunks = [
+            {
+                "chunk_type": "paragraph",
+                "section_title": "Introduction",
+                "section_path": "Introduction",
+                "text": "This is parsed document text.",
+                "embedding_text": "Paper: Attention Is All You Need\nSection: Introduction\nType: paragraph\n\nContent:\nThis is parsed document text.",
+                "content_hash": "hash-parsed",
+                "source_block_ids": [0],
+            }
+        ]
+        return "<TEI>parsed</TEI>", document, normalized, chunks
 
 
 def test_repository_object_store_roundtrip(tmp_path):
@@ -76,7 +111,11 @@ def test_storage_importer_persists_verified_pdf_and_provenance(tmp_path):
         repo = SQLitePaperRepository(tmp_path / "paperos.sqlite3", StorageConfig())
         await repo.initialize()
         store = LocalFileObjectStore(tmp_path / "objects", tmp_path / "tmp")
-        importer = PaperStorageImporter(repository=repo, object_store=store)
+        importer = PaperStorageImporter(
+            repository=repo,
+            object_store=store,
+            document_processor=FakeDocumentProcessor(),
+        )
 
         record = PaperRecordDraft(
             title="Attention Is All You Need",
@@ -112,6 +151,7 @@ def test_storage_importer_persists_verified_pdf_and_provenance(tmp_path):
         assert result.imported_pdf is True
         assert result.object_id
         assert result.job_id
+        assert result.parser_run_id
         assert result.source_file_removed is True
         assert not pdf_path.exists()
 
@@ -133,6 +173,15 @@ def test_storage_importer_persists_verified_pdf_and_provenance(tmp_path):
         assert row["page_count"] == 15
         job = repo.conn.execute("SELECT job_type FROM paper_jobs WHERE id = ?", (result.job_id,)).fetchone()
         assert job["job_type"] == "storage_parse_pdf"
+        job_status = repo.conn.execute("SELECT status FROM paper_jobs WHERE id = ?", (result.job_id,)).fetchone()
+        assert job_status["status"] == "done"
+        embed_job = repo.conn.execute("SELECT id FROM paper_jobs WHERE job_type = 'rag_embed_chunks'").fetchone()
+        assert embed_job is not None
+        parser_run = repo.conn.execute("SELECT status FROM parser_runs WHERE id = ?", (result.parser_run_id,)).fetchone()
+        assert parser_run["status"] == "done"
+        chunk = repo.conn.execute("SELECT text, embedding_text FROM paper_chunks WHERE parser_run_id = ?", (result.parser_run_id,)).fetchone()
+        assert chunk["text"] == "This is parsed document text."
+        assert chunk["embedding_text"].startswith("Paper: Attention Is All You Need")
 
         await repo.aclose()
 
@@ -294,6 +343,7 @@ def test_storage_diagnostics_status_and_info(tmp_path):
                     ],
                 ),
                 source_query="attention",
+                process_document=False,
             )
         )
 

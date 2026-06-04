@@ -151,6 +151,7 @@ class PaperOSPlugin(Star):
             search_storage = SearchStorageImportWorkflow(
                 repository=storage.repository,
                 object_store=storage.object_store,
+                storage_cfg=storage.cfg,
             )
         workflow = PaperDiscoveryWorkflow(
             search_service=self.search_service,
@@ -162,6 +163,7 @@ class PaperOSPlugin(Star):
             need_fulltext=True,
             auto_import=search_storage is not None,
             selection="selected",
+            process_document=True,
             cleanup_temporary_pdf=True,
             ignore_import_errors=True,
         )

@@ -12,6 +12,7 @@ from ..ids import new_id
 from ..models import FulltextLocationRecord, PaperRecordDraft
 from ..objects import StoredObject
 from ..text import normalize_identifier, normalize_text
+from ..document.grobid_models import NormalizedDocument
 
 
 SCHEMA_VERSION = 1
@@ -601,6 +602,150 @@ class SQLitePaperRepository:
                 """,
                 (status, error_message[:2000], now, job_id),
             )
+
+    async def mark_job_failed_final(self, job_id: str, error_message: str) -> None:
+        now = utc_now()
+        with self._conn:
+            self._conn.execute(
+                """
+                UPDATE paper_jobs
+                SET status='failed', error_message=?, locked_by=NULL, locked_at=NULL,
+                    heartbeat_at=NULL, finished_at=?, updated_at=?
+                WHERE id=?
+                """,
+                (error_message[:2000], now, now, job_id),
+            )
+
+    # ------------------------------------------------------------------
+    # Document processing
+    # ------------------------------------------------------------------
+
+    async def persist_document_processing_result(
+        self,
+        *,
+        paper_id: str,
+        version_id: str | None,
+        object_id: str,
+        parser_name: str,
+        parser_version: str | None,
+        raw_output_object_id: str | None,
+        normalized_object_id: str | None,
+        document: NormalizedDocument,
+        chunks: Iterable[dict[str, Any]],
+        message: str | None = None,
+    ) -> str:
+        now = utc_now()
+        parser_run_id = new_id("pr")
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO parser_runs(
+                    id, paper_id, version_id, object_id, parser_name, parser_version,
+                    status, raw_output_object_id, normalized_object_id, message,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'done', ?, ?, ?, ?, ?)
+                """,
+                (
+                    parser_run_id,
+                    paper_id,
+                    version_id,
+                    object_id,
+                    parser_name,
+                    parser_version,
+                    raw_output_object_id,
+                    normalized_object_id,
+                    message,
+                    now,
+                    now,
+                ),
+            )
+            section_ids: dict[int, str] = {}
+            for idx, section in enumerate(document.sections):
+                section_id = new_id("sec")
+                section_ids[idx] = section_id
+                parent_id = section_ids.get(section.parent_index) if section.parent_index is not None else None
+                self._conn.execute(
+                    """
+                    INSERT INTO document_sections(
+                        id, paper_id, parser_run_id, parent_section_id, title,
+                        level, order_index, page_start, page_end
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        section_id,
+                        paper_id,
+                        parser_run_id,
+                        parent_id,
+                        section.title,
+                        section.level,
+                        section.order_index,
+                        section.page_start,
+                        section.page_end,
+                    ),
+                )
+            block_ids: dict[int, str] = {}
+            for block in document.blocks:
+                block_id = new_id("blk")
+                block_ids[block.block_index] = block_id
+                section_id = section_ids.get(block.section_index) if block.section_index is not None else None
+                self._conn.execute(
+                    """
+                    INSERT INTO document_blocks(
+                        id, paper_id, parser_run_id, section_id, block_index,
+                        block_type, text, page_start, page_end, coords_json,
+                        content_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        block_id,
+                        paper_id,
+                        parser_run_id,
+                        section_id,
+                        block.block_index,
+                        block.block_type,
+                        block.text,
+                        block.page_start,
+                        block.page_end,
+                        json.dumps(block.coords or {}, ensure_ascii=False),
+                        block.content_hash,
+                    ),
+                )
+            for ref in document.references:
+                self._conn.execute(
+                    """
+                    INSERT INTO paper_references(
+                        id, paper_id, parser_run_id, ref_key, raw_text, title,
+                        authors_json, year, venue, doi, arxiv_id, confidence
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        new_id("ref"),
+                        paper_id,
+                        parser_run_id,
+                        ref.ref_key,
+                        ref.raw_text,
+                        ref.title,
+                        json.dumps(ref.authors, ensure_ascii=False),
+                        ref.year,
+                        ref.venue,
+                        ref.doi,
+                        ref.arxiv_id,
+                        ref.confidence,
+                    ),
+                )
+
+        await self.replace_chunks(
+            paper_id=paper_id,
+            version_id=version_id,
+            object_id=object_id,
+            parser_run_id=parser_run_id,
+            chunks=chunks,
+        )
+        return parser_run_id
+
+    async def current_version_id(self, paper_id: str) -> str | None:
+        row = self._conn.execute("SELECT current_version_id FROM papers WHERE id=?", (paper_id,)).fetchone()
+        return str(row["current_version_id"]) if row and row["current_version_id"] else None
 
     # ------------------------------------------------------------------
     # Chunks / FTS

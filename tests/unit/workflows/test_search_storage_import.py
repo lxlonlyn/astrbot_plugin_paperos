@@ -45,6 +45,7 @@ def test_import_search_result_persists_metadata_pdf_and_parse_job(tmp_path):
         summary = await workflow.import_search_result(
             PaperSearchResult(status="selected", candidates=[candidate], selected=[candidate]),
             source_query="attention",
+            process_document=False,
             cleanup_temporary_pdf=True,
         )
 

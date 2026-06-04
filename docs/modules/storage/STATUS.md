@@ -22,12 +22,12 @@ storage 处于早期可用阶段：SQLite schema、repository、object store、�
 - search result 到 storage 的传递入口：`SearchStorageImportWorkflow.import_search_result()`。
 - verified PDF 归档为 storage object，并可选清理 searcher 临时 PDF。
 - 后续文档处理任务排队：目标 job type 为 `storage_parse_pdf`。
-- verified PDF 导入 object store。后续 PDF parse/chunk/FTS 应由 storage document processing 推进；embedding/vector index 应由 RAG 推进。
-- PDF -> TEI -> normalized document -> chunks / FTS 的职责已归入 storage 文档处理；具体 worker 尚未实现。
+- verified PDF 导入 object store 后，会立即尝试 storage document processing：PDF -> GROBID TEI -> normalized document -> chunks / FTS。
+- 同步文档处理成功后，`storage_parse_pdf` job 会标记 done，并排队 `rag_embed_chunks`。失败时入库仍保留，`storage_parse_pdf` job 标记 failed，并在导入摘要中返回错误提示。
 
 ## 未完成
 
-- 已新增 storage document processor/GROBID/TEI/chunker 模块骨架；尚未实现 job worker 与 SQL rows 持久化主流程。
+- 尚未实现独立后台 job worker；当前 `/paperos search` 入库后会同步执行一次 storage document processing。
 - 尚未实现 RAG embedding/vector indexer。
 - LLM tool `paperos_search_paper` 当前仍只返回搜索结果，不做隐式入库，避免模型工具调用产生用户未预期的持久化写入。
 

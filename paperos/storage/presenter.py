@@ -120,12 +120,17 @@ class StoragePresenter:
             paper_id = getattr(item, "paper_id", None) or "-"
             object_id = getattr(item, "object_id", None) or "-"
             job_id = getattr(item, "job_id", None) or "-"
+            parser_run_id = getattr(item, "parser_run_id", None) or "-"
+            message = getattr(item, "message", None) or ""
             mode = "pdf" if getattr(item, "imported_pdf", False) else "metadata-only"
             cleanup = "cleaned" if getattr(item, "temporary_pdf_removed", False) else "kept"
+            suffix = f"; parser_run_id={parser_run_id}"
+            if message:
+                suffix += f"; message={message}"
             lines.append(
                 f"{idx}. {title}\n"
                 f"   paper_id={paper_id}; object_id={object_id}; job_id={job_id}; "
-                f"mode={mode}; temp={cleanup}"
+                f"mode={mode}; temp={cleanup}{suffix}"
             )
         return "\n".join(lines)
 

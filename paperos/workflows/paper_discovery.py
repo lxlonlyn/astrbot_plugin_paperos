@@ -63,6 +63,7 @@ class PaperDiscoveryWorkflow:
         need_fulltext: bool = True,
         auto_import: bool = True,
         selection: str = "selected",
+        process_document: bool = True,
         cleanup_temporary_pdf: bool = True,
         ignore_import_errors: bool = False,
     ) -> DiscoveryPipelineResult:
@@ -81,6 +82,7 @@ class PaperDiscoveryWorkflow:
                     source_query=query,
                     selection=selection,
                     enqueue_parse=True,
+                    process_document=process_document,
                     cleanup_temporary_pdf=cleanup_temporary_pdf,
                 )
             except Exception as exc:

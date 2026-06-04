@@ -59,6 +59,17 @@ class LocalPaperRepository(Protocol):
         available_at: str | None = None,
     ) -> str: ...
 
+    async def mark_job_done(self, job_id: str) -> None: ...
+
+    async def mark_job_failed_final(self, job_id: str, error_message: str) -> None: ...
+
+    async def current_version_id(self, paper_id: str) -> str | None: ...
+
+    async def persist_document_processing_result(
+        self,
+        **kwargs: Any,
+    ) -> str: ...
+
 
 class ObjectStore(Protocol):
     async def put_bytes(

@@ -61,7 +61,7 @@ def test_discover_and_index_searches_imports_and_reports_parse_jobs(tmp_path):
             search_storage=SearchStorageImportWorkflow(repository=repo, object_store=store),
         )
 
-        result = await workflow.discover_and_index("attention", need_fulltext=True)
+        result = await workflow.discover_and_index("attention", need_fulltext=True, process_document=False)
 
         assert search.calls == [("attention", None, True)]
         assert result.imported_count == 1

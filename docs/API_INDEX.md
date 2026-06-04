@@ -29,7 +29,8 @@
   - upsert paper metadata。
   - 将 verified PDF 归档到 object store。
   - 注册 object/version/fulltext-location link。
-  - 可选地入队 storage 文档处理 job `storage_parse_pdf`；GROBID/parser/chunker 属于 storage。
+  - 入队并立即尝试执行 storage 文档处理 job `storage_parse_pdf`；GROBID/parser/chunker 属于 storage。
+  - 成功后写入 parser run、TEI/normalized object、chunks/FTS，并排队 `rag_embed_chunks`；失败时保留入库结果并返回错误提示。
   - 已接入 `/paperos search` 的 AstrBot command workflow。
 
 ## Workflows

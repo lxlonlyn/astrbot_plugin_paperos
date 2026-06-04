@@ -50,7 +50,7 @@ Expected major parts:
 - `storage_parse_pdf`: storage worker parses a PDF object into document rows, chunks and FTS.
 - `rag_embed_chunks`: RAG worker embeds chunks and updates vector/index status.
 
-Storage may enqueue `storage_parse_pdf` after importing a verified PDF. A workflow may enqueue `rag_embed_chunks` after parsing succeeds.
+Storage enqueues `storage_parse_pdf` after importing a verified PDF and immediately attempts one synchronous document-processing pass in the `/paperos search` workflow. On success, it marks `storage_parse_pdf` done and enqueues `rag_embed_chunks`. On GROBID or parser failure, it keeps the imported paper/PDF, marks `storage_parse_pdf` failed, and returns a clear import summary message.
 
 ## Non-Goals
 

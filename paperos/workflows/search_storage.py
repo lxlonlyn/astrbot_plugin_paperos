@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..search.models import PaperCandidate, PaperSearchResult
+from ..storage.config import StorageConfig
+from ..storage.document import DocumentProcessor
 from ..storage.importer import PaperImportRequest, PaperImportResult, PaperStorageImporter
 from ..storage.interfaces import LocalPaperRepository, ObjectStore
 from ..storage.models import FulltextLocationRecord, PaperRecordDraft
@@ -68,6 +70,7 @@ class SearchStorageImportResult:
     object_storage_key: str | None = None
     object_path: str | None = None
     job_id: str | None = None
+    parser_run_id: str | None = None
     imported_pdf: bool = False
     metadata_only: bool = True
     temporary_pdf_path: str | None = None
@@ -85,6 +88,7 @@ class SearchStorageImportResult:
             object_storage_key=result.object_storage_key,
             object_path=result.object_path,
             job_id=result.job_id,
+            parser_run_id=result.parser_run_id,
             imported_pdf=result.imported_pdf,
             metadata_only=result.metadata_only,
             temporary_pdf_path=result.source_file_path,
@@ -118,10 +122,22 @@ class SearchStorageImportWorkflow:
     DTOs. RAG remains downstream and is represented here only by queued jobs.
     """
 
-    def __init__(self, *, repository: LocalPaperRepository, object_store: ObjectStore):
+    def __init__(
+        self,
+        *,
+        repository: LocalPaperRepository,
+        object_store: ObjectStore,
+        storage_cfg: StorageConfig | None = None,
+        document_processor: DocumentProcessor | None = None,
+    ):
         self.repository = repository
         self.object_store = object_store
-        self.importer = PaperStorageImporter(repository=repository, object_store=object_store)
+        self.importer = PaperStorageImporter(
+            repository=repository,
+            object_store=object_store,
+            storage_cfg=storage_cfg,
+            document_processor=document_processor,
+        )
 
     async def import_search_result(
         self,
@@ -130,6 +146,7 @@ class SearchStorageImportWorkflow:
         source_query: str | None = None,
         selection: str = "selected",
         enqueue_parse: bool = True,
+        process_document: bool = True,
         cleanup_temporary_pdf: bool = False,
     ) -> SearchStorageImportSummary:
         candidates = self._candidates_to_import(result, selection=selection)
@@ -141,6 +158,7 @@ class SearchStorageImportWorkflow:
                     source_query=source_query or (result.plan.raw_query if result.plan else None),
                     decision=f"search_{selection}",
                     enqueue_parse=enqueue_parse,
+                    process_document=process_document,
                     cleanup_temporary_pdf=cleanup_temporary_pdf,
                 )
             )
@@ -153,6 +171,7 @@ class SearchStorageImportWorkflow:
         source_query: str | None = None,
         decision: str = "search_selected",
         enqueue_parse: bool = True,
+        process_document: bool = True,
         cleanup_temporary_pdf: bool = False,
     ) -> SearchStorageImportResult:
         record = paper_candidate_to_record(candidate)
@@ -162,6 +181,7 @@ class SearchStorageImportWorkflow:
                 source_query=source_query,
                 decision=decision,
                 enqueue_parse=enqueue_parse,
+                process_document=process_document,
                 cleanup_source_file=cleanup_temporary_pdf,
             )
         )
