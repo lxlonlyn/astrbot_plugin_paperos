@@ -1,5 +1,5 @@
 from .chunker import DocumentChunker
-from .grobid_client import GrobidClient
+from .grobid_client import GrobidClient, GrobidServiceError
 from .grobid_models import DocumentBlock, DocumentReference, DocumentSection, NormalizedDocument
 from .normalizer import DocumentNormalizer
 from .processor import DocumentProcessor
@@ -11,6 +11,7 @@ __all__ = [
     "DocumentSection",
     "NormalizedDocument",
     "GrobidClient",
+    "GrobidServiceError",
     "TEIParser",
     "DocumentNormalizer",
     "DocumentChunker",

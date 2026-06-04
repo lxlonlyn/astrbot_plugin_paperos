@@ -20,6 +20,8 @@ storage PDF object
 
 GROBID `processFulltextDocument` returns TEI XML for a full scientific document. TEI can represent nested sections, paragraphs, formulas, figures, tables, bibliography and reference links. PaperOS stores the raw TEI as an object for reproducibility, but RAG should consume PaperOS normalized JSON and SQL rows instead of raw TEI.
 
+The GROBID REST endpoint is configured by `storage.grobid_base_url`; the default is `http://localhost:8070`. `storage.grobid_timeout_seconds` controls the request timeout. If the service cannot be reached, storage document processing should fail with a clear message asking the user to check the configured URL and whether GROBID is running.
+
 ## Normalized Document
 
 The normalized document is PaperOS-owned JSON derived from parser output. It should preserve enough structure for chunking and retrieval while hiding parser-specific TEI details from RAG.

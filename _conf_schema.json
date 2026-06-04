@@ -191,6 +191,16 @@
         "description": "SQLite synchronous 模式。",
         "default": "NORMAL",
         "options": ["OFF", "NORMAL", "FULL", "EXTRA"]
+      },
+      "grobid_base_url": {
+        "type": "string",
+        "description": "GROBID 服务地址。用于 storage_parse_pdf 文档处理，例如 http://localhost:8070。",
+        "default": "http://localhost:8070"
+      },
+      "grobid_timeout_seconds": {
+        "type": "float",
+        "description": "GROBID 单次 PDF 解析请求超时时间，秒。",
+        "default": 120.0
       }
     }
   },

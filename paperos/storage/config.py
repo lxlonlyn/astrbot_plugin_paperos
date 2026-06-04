@@ -22,6 +22,8 @@ class StorageConfig:
     sqlite_busy_timeout_ms: int = 5000
     sqlite_journal_mode: str = "WAL"
     sqlite_synchronous: str = "NORMAL"
+    grobid_base_url: str = "http://localhost:8070"
+    grobid_timeout_seconds: float = 120.0
 
 
 def load_storage_config(raw: Mapping[str, Any]) -> StorageConfig:
@@ -39,6 +41,8 @@ def load_storage_config(raw: Mapping[str, Any]) -> StorageConfig:
         sqlite_busy_timeout_ms=int(section.get("sqlite_busy_timeout_ms", 5000) or 5000),
         sqlite_journal_mode=str(section.get("sqlite_journal_mode", "WAL") or "WAL").upper(),
         sqlite_synchronous=str(section.get("sqlite_synchronous", "NORMAL") or "NORMAL").upper(),
+        grobid_base_url=str(section.get("grobid_base_url", "http://localhost:8070") or "http://localhost:8070").rstrip("/"),
+        grobid_timeout_seconds=float(section.get("grobid_timeout_seconds", 120.0) or 120.0),
     )
 
 
