@@ -1,9 +1,16 @@
 # rag
 
-Future module for chunk retrieval, citation-aware answer generation, and local index integration.
+Future module for local retrieval, evidence-pack construction, embedding/vector indexing, and evidence-based generation.
 
-RAG must not call `PaperSearchService` directly.
+RAG starts from storage-owned document data:
 
-If local evidence suggests external literature expansion is needed, RAG should return expansion
-hints to a command/workflow layer. The workflow may then build `paperos.search.models.SearchContext`
-and explicitly call searcher.
+```text
+storage chunks / FTS / normalized document
+  -> RAG retrieval
+  -> EvidencePack
+  -> answer / analysis
+```
+
+RAG must not parse PDFs, call GROBID, download PDFs, or call `PaperSearchService` directly.
+
+If local evidence suggests external literature expansion is needed, RAG should return search expansion hints to a command/workflow layer. The workflow may then build a search context and explicitly call searcher.

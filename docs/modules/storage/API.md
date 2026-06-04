@@ -152,3 +152,16 @@ stored = await object_store.put_file(
 返回 `SearchStorageImportSummary` / `SearchStorageImportResult`，包含 `paper_id`、`object_id`、`job_id`、是否归档 PDF、是否仅 metadata 入库、临时 PDF 是否已清理等信息。
 
 `paperos.library.PaperLibraryFacade` 仅保留为兼容 re-export。新代码不要继续从顶层 `paperos.library` 引入。
+
+## RAG Read APIs Needed
+
+RAG Phase 1 需要 repository 增加只读查询方法：
+
+```python
+await repo.search_chunks_fts(query, paper_id=None, limit=20)
+await repo.get_chunks_by_ids(ids)
+await repo.get_neighbor_chunks(chunk_id, before=1, after=1)
+await repo.get_paper_citation_metadata(paper_id)
+```
+
+这些方法只读 storage 已生成的 chunks / FTS / citation metadata，不调用 search，不调用 embedding provider。

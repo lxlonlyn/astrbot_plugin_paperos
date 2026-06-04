@@ -4,66 +4,128 @@
 
 ## 当前任务边界
 
-`paperos/rag/` 负责 embedding、向量索引、检索和基于本地证据的分析。
+`paperos/rag/` 负责本地 evidence retrieval、embedding/vector index、context construction 和基于证据的回答/分析。
+
+Storage 已拥有 PDF document processing：PDF -> TEI -> normalized document -> chunks / FTS。RAG 从 storage 已生成的 `paper_chunks`、FTS、normalized document 和 citation metadata 开始工作。
 
 RAG 负责：
 
-- 从 storage 读取已持久化的 paper、object、chunk、job 和 index status。
+- 从 storage 读取 `paper_chunks`、paper metadata、normalized document、index status。
+- FTS-only retrieval：先消费 storage 的 `paper_chunks_fts`，验证 chunks 是否可用。
 - 调用外部 embedding provider 获取 chunk embedding 和 query embedding。
-- 将 embedding/vector 记录和 vector/index status 通过 storage API 写回本地数据库。
+- 写入 vector index，并通过 storage 更新 index status。
 - 执行 FTS/vector/hybrid retrieval。
-- 构造 LLM answer context。
-- 在本地证据基础上做 paper QA、claim extraction、idea generation、related work 草稿等上层分析。
+- 做 neighbor expansion、fusion、optional rerank。
+- 构造 EvidencePack，保留 paper、section、page、chunk、citation 信息。
+- 调 LLM 只基于 EvidencePack 生成回答。
+- 为 workflow 提供 search expansion hints，但不直接调用 searcher。
 
 RAG 不负责：
 
+- PDF parser。
+- GROBID。
+- chunker。
+- PDF -> text / TEI / normalized document。
 - 联网搜索论文。
 - 从 URL 下载 PDF。
-- 调用 GROBID 或解析 PDF 为 chunks。
-- 维护 storage 文档处理 schema。
-- 维护 SQLite schema 的底层细节。
+- storage schema 底层迁移。
 - 绕过 storage 直接散落写数据库或索引文件。
 - 修改 search 的候选排序或 PDF 验证策略。
 
-## 推荐子能力
+## 推荐目录结构
 
-RAG 可以按能力拆分内部文件，但不要把它们提升为顶层模块：
-
-- embedding indexer：调用 embedding provider，写入 vector/index 状态。
-- retriever：执行 FTS/vector/hybrid retrieval。
-- context builder：把检索结果组织为 LLM 可用上下文。
-- analysis workflows：idea、claim、method、limitation、related work 等。
-
-## 推荐索引流程
+这是未来实现结构，不代表当前已存在代码：
 
 ```text
-storage chunks / normalized document
-  ↓
-rag embedding indexer calls embedding provider
-  ↓
-storage records vector metadata / index status
+paperos/rag/
+  __init__.py
+  models.py
+  service.py
+  config.py
+
+  embeddings/
+    __init__.py
+    interfaces.py
+    astrbot_provider.py
+    batcher.py
+
+  indexes/
+    __init__.py
+    interfaces.py
+    lancedb_store.py
+    metadata.py
+
+  retrieval/
+    __init__.py
+    fts.py
+    vector.py
+    fusion.py
+    rerank.py
+    neighbors.py
+
+  context/
+    __init__.py
+    evidence.py
+    builder.py
+    citations.py
+
+  generation/
+    __init__.py
+    prompts.py
+    answer.py
+
+  jobs.py
 ```
 
-## 推荐检索流程
+## Phases
 
-```text
-query
-  ↓
-query embedding via API provider
-  ↓
-FTS top_k + vector top_k
-  ↓
-fusion / rerank
-  ↓
-neighbor expansion
-  ↓
-context builder
-  ↓
-answer / analysis workflow
-```
+Phase 1: FTS-only RAG.
 
-## 设计原则
+- `RagService.retrieve_local(query, filters=None)`。
+- 调用 storage repository 的 `search_chunks_fts(...)`。
+- 返回 `RetrievedChunk[]`。
+- `EvidenceBuilder` 根据 chunk ids 拉取 paper title、section、page、text。
+- `AnswerBuilder` 用 LLM 只基于 EvidencePack 回答。
+- 不依赖 embedding API，不写 vector index。
 
-SQLite 中的 paper/chunk/object/index metadata 是 source of truth。向量索引可以是 SQLite 表、LanceDB 或其他本地可重建索引，但写入和状态更新应通过 storage 边界完成。
+Phase 2: embedding + vector index.
 
-PDF -> TEI -> normalized document -> chunks / FTS 属于 storage 的本地文档处理职责，不属于 RAG。
+- `RagIndexJobRunner` claim `rag_embed_chunks` job。
+- load unembedded chunks。
+- batch embedding API。
+- write LanceDB or another local vector store。
+- update index status。
+
+Phase 3: hybrid retrieval.
+
+- `FTSRetriever`。
+- `VectorRetriever`。
+- `HybridRetriever`。
+- RRF fusion: `score = 1 / (60 + rank_fts) + 1 / (60 + rank_vector)`。
+- neighbor expansion。
+- optional rerank。
+
+Phase 4: search expansion hints.
+
+- `RagService.build_search_context(query) -> SearchContextDraft`。
+- 返回 related papers、concepts、aliases、known identifiers、positive/negative query terms、suggested search queries、local context summary。
+- RAG 只返回 hints；workflow 再转换为 searcher 的 SearchContext 并显式调用 search。
+
+Phase 5: paper QA / claim / related work.
+
+- `PaperQAService`。
+- `ClaimExtractionService`。
+- `RelatedWorkDraftService`。
+- `IdeaExpansionService`。
+- 全部建立在 retrieve -> EvidencePack -> answer 上，不让 LLM 凭记忆写。
+
+## Storage Methods Needed
+
+RAG Phase 1 需要 storage repository 提供：
+
+- `search_chunks_fts(query, paper_id=None, limit=20)`
+- `get_chunks_by_ids(ids)`
+- `get_neighbor_chunks(chunk_id, before=1, after=1)`
+- `get_paper_citation_metadata(paper_id)`
+
+这些方法只读 storage 已持久化数据，不触发 search，不调用 embedding provider。

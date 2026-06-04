@@ -102,12 +102,14 @@ It may:
 - write vector records and index status back through storage APIs;
 - perform FTS/vector/hybrid retrieval;
 - build answer context and paper-level analysis outputs.
+- return search expansion hints to a command/workflow layer.
 
 It must not:
 
 - search the internet for new papers;
 - download PDFs from URLs;
 - call GROBID or parse PDFs into chunks;
+- call `PaperSearchService` directly;
 - bypass storage when persisting chunks or vectors;
 - mutate search candidate ranking.
 
