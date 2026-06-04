@@ -35,9 +35,10 @@
 
 ## Workflows
 
-- `paperos.workflows.paper_discovery.PaperDiscoveryWorkflow.discover_and_index(query, need_fulltext=True, auto_import=True)`
+- `paperos.workflows.paper_discovery.PaperDiscoveryWorkflow.discover_and_index(query, need_fulltext=True, auto_import=True, search_context=None)`
   - 用户级 discovery pipeline。
   - 第一阶段同步执行 search 和 storage import。
+  - 可选透传 searcher 的 `SearchContext`，但 workflow/searcher 不反向调用 RAG 或 storage 生成它。
   - 后续 storage document processing / RAG embedding 通过 `paper_jobs` 表表达。
   - 返回 `DiscoveryPipelineResult`，包含 search result、import summary、`storage_parse_job_ids`、`rag_job_ids` 和可选 `import_error`。
 

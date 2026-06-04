@@ -39,9 +39,8 @@ class PaperSearchService:
             verifier=FulltextVerifier(cfg.search_policy),
         )
         logger.debug(
-            "[PaperOS][SearchService] initialized strategy=llm_direct_source_crawler crawler_enabled=%s core_enabled=%s",
+            "[PaperOS][SearchService] initialized strategy=llm_direct_source_crawler crawler_enabled=%s",
             cfg.crawler.enabled,
-            cfg.core_api.enabled,
         )
 
     async def search(

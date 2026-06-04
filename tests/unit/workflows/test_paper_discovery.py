@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from paperos.search.models import FulltextLocation, FulltextStatus, PaperCandidate, PaperSearchResult
+from paperos.search.models import FulltextLocation, FulltextStatus, PaperCandidate, PaperSearchResult, SearchContext
 from paperos.storage.config import StorageConfig
 from paperos.storage.objects import LocalFileObjectStore
 from paperos.storage.sqlite.repository import SQLitePaperRepository
@@ -15,8 +15,15 @@ class FakeSearchService:
         self.result = result
         self.calls = []
 
-    async def search(self, raw_query: str, *, event=None, need_fulltext: bool = True) -> PaperSearchResult:
-        self.calls.append((raw_query, event, need_fulltext))
+    async def search(
+        self,
+        raw_query: str,
+        *,
+        event=None,
+        need_fulltext: bool = True,
+        context: SearchContext | None = None,
+    ) -> PaperSearchResult:
+        self.calls.append((raw_query, event, need_fulltext, context))
         return self.result
 
 
@@ -61,9 +68,15 @@ def test_discover_and_index_searches_imports_and_reports_parse_jobs(tmp_path):
             search_storage=SearchStorageImportWorkflow(repository=repo, object_store=store),
         )
 
-        result = await workflow.discover_and_index("attention", need_fulltext=True, process_document=False)
+        search_context = SearchContext(known_titles=["Attention Is All You Need"])
+        result = await workflow.discover_and_index(
+            "attention",
+            need_fulltext=True,
+            process_document=False,
+            search_context=search_context,
+        )
 
-        assert search.calls == [("attention", None, True)]
+        assert search.calls == [("attention", None, True, search_context)]
         assert result.imported_count == 1
         assert result.pdf_count == 1
         assert len(result.storage_parse_job_ids) == 1

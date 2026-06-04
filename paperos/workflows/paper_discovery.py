@@ -3,12 +3,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from ..search.models import PaperSearchResult
+from ..search.models import PaperSearchResult, SearchContext
 from .search_storage import SearchStorageImportSummary, SearchStorageImportWorkflow
 
 
 class PaperSearchFacade(Protocol):
-    async def search(self, raw_query: str, *, event: Any | None = None, need_fulltext: bool = True) -> PaperSearchResult: ...
+    async def search(
+        self,
+        raw_query: str,
+        *,
+        event: Any | None = None,
+        need_fulltext: bool = True,
+        context: SearchContext | None = None,
+    ) -> PaperSearchResult: ...
 
 
 @dataclass(frozen=True)
@@ -66,11 +73,13 @@ class PaperDiscoveryWorkflow:
         process_document: bool = True,
         cleanup_temporary_pdf: bool = True,
         ignore_import_errors: bool = False,
+        search_context: SearchContext | None = None,
     ) -> DiscoveryPipelineResult:
         search_result = await self.search_service.search(
             raw_query=query,
             event=event,
             need_fulltext=need_fulltext,
+            context=search_context,
         )
 
         import_summary: SearchStorageImportSummary | None = None

@@ -24,6 +24,7 @@ result = await PaperDiscoveryWorkflow(
     query,
     need_fulltext=True,
     auto_import=True,
+    search_context=None,
 )
 ```
 
@@ -42,10 +43,13 @@ result = await PaperDiscoveryWorkflow(
 ### 1. Search
 
 ```text
-PaperSearchService.search(query, need_fulltext=True)
+PaperSearchService.search(query, need_fulltext=True, context=search_context)
 ```
 
 Search 负责在线发现、临时 PDF 下载和 PDF 验证。Search 不写 storage。
+`search_context` 是可选的 `paperos.search.models.SearchContext`，由 workflow
+外部或 workflow 调用方提供。Search 只消费这些 hint；RAG/storage 不应被
+searcher 反向调用。
 
 ### 2. Storage Import
 

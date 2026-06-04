@@ -16,7 +16,7 @@ class PaperSearchPresenter:
             f"- QueryAnalyzer Provider: {provider}\n"
             f"- Targeted crawler: {'启用' if self.cfg.crawler.enabled else '禁用'}\n"
             "- 通用网页搜索后端: 不使用\n"
-            f"- Legacy CORE API: {'启用但主链路不使用' if self.cfg.core_api.enabled else '禁用'}\n"
+            "- 学术聚合 API 主链路: 不使用\n"
             f"- Fulltext PDF 下载验证: {'启用' if self.cfg.search_policy.enable_fulltext_verify else '禁用'}"
         )
 

@@ -177,8 +177,20 @@ def test_storage_importer_persists_verified_pdf_and_provenance(tmp_path):
         assert job_status["status"] == "done"
         embed_job = repo.conn.execute("SELECT id FROM paper_jobs WHERE job_type = 'rag_embed_chunks'").fetchone()
         assert embed_job is not None
-        parser_run = repo.conn.execute("SELECT status FROM parser_runs WHERE id = ?", (result.parser_run_id,)).fetchone()
+        parser_run = repo.conn.execute(
+            """
+            SELECT status, raw_output_object_id, normalized_object_id
+            FROM parser_runs WHERE id = ?
+            """,
+            (result.parser_run_id,),
+        ).fetchone()
         assert parser_run["status"] == "done"
+        assert parser_run["raw_output_object_id"]
+        assert parser_run["normalized_object_id"]
+        raw_obj = repo.conn.execute("SELECT kind FROM objects WHERE id = ?", (parser_run["raw_output_object_id"],)).fetchone()
+        normalized_obj = repo.conn.execute("SELECT kind FROM objects WHERE id = ?", (parser_run["normalized_object_id"],)).fetchone()
+        assert raw_obj["kind"] == "tei_xml"
+        assert normalized_obj["kind"] == "normalized_document"
         chunk = repo.conn.execute("SELECT text, embedding_text FROM paper_chunks WHERE parser_run_id = ?", (result.parser_run_id,)).fetchone()
         assert chunk["text"] == "This is parsed document text."
         assert chunk["embedding_text"].startswith("Paper: Attention Is All You Need")

@@ -13,9 +13,9 @@ from .tei_parser import TEIParser
 class DocumentProcessor:
     """Compose local PDF document processing components.
 
-    This first pass exposes the processing shape without owning job execution.
-    Future storage workers can persist parser_runs, TEI objects, normalized
-    document objects, SQL rows, chunks, and FTS through repository APIs.
+    The processor performs PDF -> TEI -> normalized document -> chunks. The
+    storage importer/repository own persistence of TEI objects, normalized
+    document objects, SQL document rows, chunks, and FTS.
     """
 
     def __init__(
