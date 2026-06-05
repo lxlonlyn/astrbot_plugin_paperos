@@ -9,7 +9,6 @@
 - `paperos/rag/context/evidence.py`
 - `paperos/rag/providers.py`
 - `paperos/rag/indexing.py`
-- `paperos/rag/vector.py`
 - `paperos/rag/service.py`
 - `paperos/rag/presenter.py`
 
@@ -18,10 +17,10 @@
 已新增 Phase 2 的基础索引服务，但尚未接入命令或 job runner：
 
 - `resolve_embedding_provider(context, provider_id="")`：只解析 AstrBot 已配置的 embedding provider。
-- `RagIndexService.index_parser_run(parser_run_id)`：读取 storage chunks，调用 AstrBot embedding provider，写 vector store，并更新 `index_status`。
+- `RagIndexService.index_parser_run(parser_run_id)`：读取 storage chunks，调用 AstrBot embedding provider，通过 storage-owned `LocalVectorIndex` 写 `VectorRecord`，并更新 chunk-level `chunk_embedding_status` 与 paper-level `index_status`。
 - `RagIndexService.index_paper(paper_id)`。
 - `RagIndexService.index_pending_job(job)`：只处理明确 job payload，不 claim、不 mark done/failed。
-- storage 已提供 `LocalVectorIndex` / `LanceDBVectorIndex`：写可重建的 chunk vector records，只返回 `chunk_id + score`，正文仍从 storage 读取；RAG indexing 后续需要迁移到该 storage-owned 接口。
+- RAG 不实例化 LanceDB，不接收 `vector_index_dir`，不决定 vector index 如何建表或存储。
 
 当前 docs 固定边界：RAG 不拥有 PDF parser、GROBID、chunker 或 PDF -> text。Storage 负责 document processing 和 chunks；RAG 负责 FTS/vector retrieval、embedding/vector index、EvidencePack、answer generation 和 search expansion hints。
 
@@ -56,12 +55,11 @@
 - load parser_run/paper chunks：已完成。
 - resolve AstrBot embedding provider：已完成。
 - batch embedding API：已完成。
-- write LanceDB-compatible vector store：基础实现已完成，生产环境需要安装 `lancedb`。
-- vector search primitive：基础实现已完成，仅返回 chunk ids/scores。
+- write storage-owned vector index：已完成，通过 `LocalVectorIndex.upsert_vectors(...)`。
 - update `index_status`：已完成。
 - `RagIndexJobRunner`：未实现。
 - claim `rag_embed_chunks` job：未实现，后续由 workflow/job runner 负责。
-- chunk-level embedding status table：storage 已实现 `chunk_embedding_status` 和 repository 方法；RAG indexing 后续需要迁移使用。
+- chunk-level embedding status：已完成，通过 storage repository `upsert_chunk_embedding_status(...)`。
 - `RagVectorService` / `VectorRetriever` / hybrid retrieval：未实现。
 
 ## Phase 3: Hybrid Retrieval

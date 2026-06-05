@@ -3,13 +3,16 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Protocol
 
 from ..config import RagConfig
+from ..storage.interfaces import (
+    ChunkEmbeddingStatusDraft,
+    LocalVectorIndex,
+    VectorRecord,
+)
 from ..storage.models import ChunkRecord
 from .providers import EmbeddingProviderError, get_embeddings_batched, resolve_embedding_provider
-from .vector import LanceDBVectorStore, VectorStore
 
 
 class RagIndexError(RuntimeError):
@@ -42,26 +45,50 @@ class RagIndexRepository(Protocol):
         message: str | None = None,
     ) -> None: ...
 
+    async def get_chunk_embedding_status(
+        self,
+        *,
+        chunk_id: str,
+        content_hash: str,
+        embedding_provider_id: str,
+        embedding_model: str,
+        embedding_dim: int,
+        vector_profile: str,
+    ) -> object | None: ...
+
+    async def upsert_chunk_embedding_status(
+        self,
+        draft: ChunkEmbeddingStatusDraft,
+    ) -> str: ...
+
+    async def list_missing_or_stale_chunk_embeddings(
+        self,
+        *,
+        paper_id: str | None = None,
+        parser_run_id: str | None = None,
+        embedding_provider_id: str,
+        embedding_model: str,
+        embedding_dim: int,
+        vector_profile: str,
+        limit: int = 100,
+    ) -> list[ChunkRecord]: ...
+
 
 class RagIndexService:
-    """Embed storage chunks and write rebuildable vector index records."""
+    """Compute chunk embeddings and write them through storage-owned interfaces."""
 
     def __init__(
         self,
         *,
         repository: RagIndexRepository,
+        vector_index: LocalVectorIndex,
         context: Any,
-        vector_index_dir: Path,
         cfg: RagConfig | None = None,
-        vector_store: VectorStore | None = None,
     ):
         self.repository = repository
+        self.vector_index = vector_index
         self.context = context
         self.cfg = cfg or RagConfig()
-        self.vector_store = vector_store or LanceDBVectorStore(
-            vector_index_dir,
-            table_name=self.cfg.vector_table_name,
-        )
 
     async def index_parser_run(self, parser_run_id: str) -> RagIndexResult:
         chunks = await self.repository.get_chunks_for_parser_run(parser_run_id)
@@ -94,18 +121,38 @@ class RagIndexService:
             provider_id=self.cfg.embedding_provider_id,
         )
         profile = _index_profile(resolved.provider_id or resolved.name, resolved.dim)
+        chunks_to_index = await self._filter_missing_or_stale_chunks(
+            chunks,
+            provider_id=resolved.provider_id,
+            embedding_model=profile,
+            embedding_dim=resolved.dim,
+            vector_profile=profile,
+        )
+
         for paper_id in paper_ids:
             await self.repository.update_index_status(
                 paper_id=paper_id,
                 index_name=self.cfg.vector_table_name,
                 status="indexing",
                 profile=profile,
-                message=f"embedding {len(chunks)} chunks",
+                message=f"embedding {len(chunks_to_index)} missing/stale chunks",
             )
 
         try:
-            records = await self._embed_records(chunks, resolved.provider, resolved.provider_id, resolved.dim, profile)
-            await self.vector_store.upsert_vectors(records)
+            records = await self._embed_records(
+                chunks_to_index,
+                resolved.provider,
+                resolved.provider_id,
+                resolved.dim,
+                profile,
+            )
+            await self.vector_index.upsert_vectors(records)
+            await self._mark_chunk_embeddings_done(
+                records,
+                provider_id=resolved.provider_id,
+                embedding_dim=resolved.dim,
+                vector_profile=profile,
+            )
         except Exception as exc:
             for paper_id in paper_ids:
                 await self.repository.update_index_status(
@@ -118,13 +165,13 @@ class RagIndexService:
             raise
 
         for paper_id in paper_ids:
-            count = sum(1 for chunk in chunks if chunk.paper_id == paper_id)
+            count = sum(1 for chunk in chunks_to_index if chunk.paper_id == paper_id)
             await self.repository.update_index_status(
                 paper_id=paper_id,
                 index_name=self.cfg.vector_table_name,
                 status="done",
                 profile=profile,
-                message=f"indexed {count} chunks",
+                message=f"indexed {count} missing/stale chunks",
             )
         return RagIndexResult(
             paper_ids=paper_ids,
@@ -143,8 +190,8 @@ class RagIndexService:
         provider_id: str,
         dim: int,
         profile: str,
-    ) -> list[dict[str, Any]]:
-        out: list[dict[str, Any]] = []
+    ) -> list[VectorRecord]:
+        out: list[VectorRecord] = []
         batch_size = max(1, int(self.cfg.embedding_batch_size))
         texts = [_embedding_text(chunk) for chunk in chunks]
         vectors = await get_embeddings_batched(provider, texts, batch_size=batch_size)
@@ -155,24 +202,96 @@ class RagIndexService:
                 )
             content_hash = chunk.content_hash or _sha256_text(text)
             out.append(
-                {
-                    "id": f"{chunk.chunk_id}:{profile}:{content_hash}",
-                    "chunk_id": chunk.chunk_id,
-                    "paper_id": chunk.paper_id,
-                    "vector": vector,
-                    "embedding_model": profile,
-                    "provider_id": provider_id,
-                    "content_hash": content_hash,
-                    "section_path": chunk.section_path,
-                    "page_start": chunk.page_start,
-                    "page_end": chunk.page_end,
-                    "chunk_type": chunk.chunk_type,
-                    "parser_run_id": chunk.parser_run_id,
-                    "chunk_index": chunk.chunk_index,
-                    "text": text,
-                }
+                VectorRecord(
+                    id=f"{chunk.chunk_id}:{profile}:{content_hash}",
+                    chunk_id=chunk.chunk_id,
+                    paper_id=chunk.paper_id,
+                    vector=vector,
+                    embedding_model=profile,
+                    provider_id=provider_id,
+                    content_hash=content_hash,
+                    parser_run_id=chunk.parser_run_id,
+                    chunk_index=chunk.chunk_index,
+                    section_path=chunk.section_path,
+                    page_start=chunk.page_start,
+                    page_end=chunk.page_end,
+                    chunk_type=chunk.chunk_type,
+                    profile=profile,
+                )
             )
         return out
+
+    async def _filter_missing_or_stale_chunks(
+        self,
+        chunks: list[ChunkRecord],
+        *,
+        provider_id: str,
+        embedding_model: str,
+        embedding_dim: int,
+        vector_profile: str,
+    ) -> list[ChunkRecord]:
+        if not chunks:
+            return []
+        paper_ids = {chunk.paper_id for chunk in chunks}
+        parser_run_ids = {chunk.parser_run_id for chunk in chunks if chunk.parser_run_id}
+        if len(parser_run_ids) == 1:
+            return await self.repository.list_missing_or_stale_chunk_embeddings(
+                parser_run_id=next(iter(parser_run_ids)),
+                embedding_provider_id=provider_id,
+                embedding_model=embedding_model,
+                embedding_dim=embedding_dim,
+                vector_profile=vector_profile,
+                limit=max(1, len(chunks)),
+            )
+        if len(paper_ids) == 1:
+            return await self.repository.list_missing_or_stale_chunk_embeddings(
+                paper_id=next(iter(paper_ids)),
+                embedding_provider_id=provider_id,
+                embedding_model=embedding_model,
+                embedding_dim=embedding_dim,
+                vector_profile=vector_profile,
+                limit=max(1, len(chunks)),
+            )
+
+        out: list[ChunkRecord] = []
+        for chunk in chunks:
+            content_hash = chunk.content_hash or _sha256_text(_embedding_text(chunk))
+            status = await self.repository.get_chunk_embedding_status(
+                chunk_id=chunk.chunk_id,
+                content_hash=content_hash,
+                embedding_provider_id=provider_id,
+                embedding_model=embedding_model,
+                embedding_dim=embedding_dim,
+                vector_profile=vector_profile,
+            )
+            if status is None or getattr(status, "status", None) != "done":
+                out.append(chunk)
+        return out
+
+    async def _mark_chunk_embeddings_done(
+        self,
+        records: list[VectorRecord],
+        *,
+        provider_id: str,
+        embedding_dim: int,
+        vector_profile: str,
+    ) -> None:
+        for record in records:
+            await self.repository.upsert_chunk_embedding_status(
+                ChunkEmbeddingStatusDraft(
+                    chunk_id=record.chunk_id,
+                    paper_id=record.paper_id,
+                    parser_run_id=record.parser_run_id,
+                    content_hash=record.content_hash,
+                    embedding_provider_id=provider_id,
+                    embedding_model=record.embedding_model,
+                    embedding_dim=embedding_dim,
+                    vector_backend="storage",
+                    vector_profile=vector_profile,
+                    vector_table=self.cfg.vector_table_name,
+                    status="done",
+                )
+            )
 
 
 def _embedding_text(chunk: ChunkRecord) -> str:

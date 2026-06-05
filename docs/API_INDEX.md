@@ -63,7 +63,7 @@
 
 ## RAG
 
-RAG 从本地 storage 读取 paper/chunk/normalized document/index 数据，不调用 search。当前已实现 Phase 1 的 FTS-only retrieval 和 EvidencePack：`RagService.retrieve_local(...)` 从 `paper_chunks_fts` 返回 `RetrievedChunk[]`，`RagService.build_evidence_pack(...)` 补齐 citation metadata 和 neighbor chunks。Phase 2 基础 indexing service 也已存在，但后续需要迁移为通过 storage-owned `LocalVectorIndex` 写向量记录，并通过 repository 写 `chunk_embedding_status` 与 paper-level `index_status`；job claim/mark done/failed 仍应由 workflow/job runner 负责。LanceDB 只保存可重建 vector index 和 `chunk_id`，真实正文仍从 storage `paper_chunks` 读取。之后做 hybrid retrieval 和基于证据的回答/分析。PDF -> TEI -> chunks / FTS 属于 storage。RAG 只解析 embedding provider / retrieval / rerank / LLM answer 等运行期结果，不解析 PDF/GROBID 文档结构。若本地证据不足，RAG 返回 search expansion hints，由 workflow 显式调用 search。
+RAG 从本地 storage 读取 paper/chunk/normalized document/index 数据，不调用 search。当前已实现 Phase 1 的 FTS-only retrieval 和 EvidencePack：`RagService.retrieve_local(...)` 从 `paper_chunks_fts` 返回 `RetrievedChunk[]`，`RagService.build_evidence_pack(...)` 补齐 citation metadata 和 neighbor chunks。Phase 2 基础 indexing service 也已存在：`RagIndexService` 通过 storage repository 读取 chunks 和过滤 missing/stale `chunk_embedding_status`，调用 AstrBot embedding provider，然后组织不含正文的 storage `VectorRecord[]`，通过 storage-owned `LocalVectorIndex` 写向量记录，并通过 repository 写 `chunk_embedding_status` 与 paper-level `index_status`；job claim/mark done/failed 仍应由 workflow/job runner 负责。Vector index 只保存可重建向量记录和 `chunk_id`，真实正文仍从 storage `paper_chunks` 读取。之后做 hybrid retrieval 和基于证据的回答/分析。PDF -> TEI -> chunks / FTS 属于 storage。RAG 只解析 embedding provider / retrieval / rerank / LLM answer 等运行期结果，不解析 PDF/GROBID 文档结构。若本地证据不足，RAG 返回 search expansion hints，由 workflow 显式调用 search。
 
 See:
 

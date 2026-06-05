@@ -29,24 +29,32 @@ Current baseline implementation:
 rag_embed_chunks job
   -> workflow claims job
   -> RagIndexService reads storage chunks
+  -> repository filters missing/stale chunk_embedding_status
   -> resolve AstrBot embedding provider
   -> provider.get_dim()
   -> provider.get_embeddings_batch(texts, batch_size=...)
      or fallback provider.get_embeddings(list[str]) per batch
-  -> write LanceDB vector records
-  -> update storage index_status
+  -> build storage VectorRecord[] without chunk text
+  -> storage.vector_index.upsert_vectors(records)
+  -> repository.upsert_chunk_embedding_status(...)
+  -> repository.update_index_status(...)
   -> workflow marks job done/failed
 ```
 
 `RagIndexService` deliberately does not claim jobs or parse commands. It handles one explicit parser run, paper id, or decoded job payload.
 
-`LanceDBVectorIndex` owns only vector index operations:
+`RagIndexService` does not instantiate LanceDB and does not accept `vector_index_dir`. It receives storage-owned `LocalVectorIndex` from the caller:
 
-- open the vector index directory;
-- upsert chunk vector records;
-- vector search returns `chunk_id + score`.
+```python
+RagIndexService(
+    repository=storage.repository,
+    vector_index=storage.vector_index,
+    context=context,
+    cfg=cfg.rag,
+)
+```
 
-LanceDB is not the source of truth. Real chunk text, paper metadata, sections, pages, and citations must still be loaded from storage `paper_chunks` and related tables.
+`LocalVectorIndex` owns vector index operations. LanceDB is not the source of truth. Real chunk text, paper metadata, sections, pages, and citations must still be loaded from storage `paper_chunks` and related tables.
 
 Embedding providers are owned by AstrBot. PaperOS must not implement Qwen/OpenAI/etc. providers directly. It only resolves an already configured AstrBot embedding provider via `context.get_all_embedding_providers()`, then calls `get_dim()`. For chunk embeddings it first uses AstrBot's `get_embeddings_batch(texts, batch_size=...)` helper when available; if that method is absent, it falls back to calling `get_embeddings(list[str])` in PaperOS-sized batches.
 
@@ -66,7 +74,6 @@ page_end
 chunk_type
 parser_run_id
 chunk_index
-text
 ```
 
 ## Rules
@@ -76,7 +83,9 @@ text
 - Vector index is rebuildable.
 - SQLite/storage chunks are the source of truth.
 - RAG calls embedding providers; storage never does.
-- storage 已提供 `chunk_embedding_status`；RAG indexing 后续应在每个 chunk embedding 写入后通过 repository 更新该表，并继续维护 paper-level `index_status` 汇总。
+- RAG may organize `VectorRecord`, but storage decides how to persist it.
+- Chunk text is only embedding provider input; it must not be written into vector records.
+- RAG updates `chunk_embedding_status` through storage repository after vector upsert and maintains paper-level `index_status` summary.
 
 ## Job Names
 
