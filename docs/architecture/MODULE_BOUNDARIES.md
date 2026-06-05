@@ -10,6 +10,13 @@ PaperOS 的论文数据链路只保留三个核心模块：
 - `storage`: 本地持久化事实源和文档数据处理层。负责保存、更新、查询、返回持久化数据，也负责已归档 PDF 的本地解析、TEI/normalized document、chunks 和 FTS。不联网搜索，不调用 LLM，不调用 embedding provider。
 - `rag`: 本地检索、向量索引和回答层。负责从 storage 的 chunks / normalized document 开始，调用外部 embedding provider 获取向量，维护 vector index，并执行 retrieval / answer / analysis workflow。
 
+“解析”一词在 PaperOS 中必须带上下文：
+
+- storage owns document parsing：PDF/GROBID/TEI -> normalized document -> chunks/FTS。
+- RAG owns provider/result parsing：embedding provider response、vector search results、rerank results、answer JSON/hints。
+
+RAG 可以解析 embedding provider 的返回结果，但不能解析 PDF、GROBID TEI 或生成 chunks。
+
 `reasoning` 不是论文数据链路的核心模块。idea generation、claim 整理、related work 草稿等能力应优先作为 `rag` 的上层应用或 workflow，而不是新的底层数据模块。
 
 `ingest` 也不是顶层模块。搜索结果入库、PDF 归档、解析/索引任务推进应作为 command/facade/workflow 组合 `search -> storage -> rag`。
@@ -69,7 +76,7 @@ It must not:
 
 ## Storage boundary
 
-Storage is persistence only.
+Storage is persistence plus local document processing.
 
 It may:
 
@@ -99,9 +106,10 @@ It may:
 
 - read chunks / normalized document data from storage;
 - call external embedding providers for chunks and query embeddings;
+- parse embedding provider responses and retrieval/rerank results;
 - write vector records and index status back through storage APIs;
 - perform FTS/vector/hybrid retrieval;
-- build answer context and paper-level analysis outputs.
+- build answer context and paper-level analysis outputs;
 - return search expansion hints to a command/workflow layer.
 
 It must not:

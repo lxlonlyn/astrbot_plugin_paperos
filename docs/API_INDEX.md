@@ -57,7 +57,7 @@
 
 ## RAG
 
-RAG 从本地 storage 读取 paper/chunk/normalized document/index 数据，不调用 search。Phase 1 先做 FTS-only retrieval 和 EvidencePack；Phase 2 再做 `rag_embed_chunks`、vector index；之后做 hybrid retrieval 和基于证据的回答/分析。PDF -> TEI -> chunks / FTS 属于 storage。若本地证据不足，RAG 返回 search expansion hints，由 workflow 显式调用 search。
+RAG 从本地 storage 读取 paper/chunk/normalized document/index 数据，不调用 search。Phase 1 先做 FTS-only retrieval 和 EvidencePack；Phase 2 再做 `rag_embed_chunks`、vector index；之后做 hybrid retrieval 和基于证据的回答/分析。PDF -> TEI -> chunks / FTS 属于 storage。RAG 只解析 embedding provider / retrieval / rerank / LLM answer 等运行期结果，不解析 PDF/GROBID 文档结构。若本地证据不足，RAG 返回 search expansion hints，由 workflow 显式调用 search。
 
 See:
 

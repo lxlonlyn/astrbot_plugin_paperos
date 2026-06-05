@@ -2,6 +2,8 @@
 
 Storage 是 PaperOS 的本地事实源和文档数据处理层。它不联网搜索论文，不调用 LLM，不调用 embedding provider。
 
+本文里的 parser/chunker 指本地文档结构化处理：PDF/GROBID/TEI -> normalized document -> chunks/FTS。RAG 仍然可以解析 embedding provider 或检索结果，但不拥有这条文档处理链。
+
 ## 职责
 
 - SQLite schema / migration。

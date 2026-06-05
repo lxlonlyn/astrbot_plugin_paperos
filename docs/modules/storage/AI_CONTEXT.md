@@ -7,6 +7,8 @@
 `paperos/storage/` 只负责本地持久化数据的保存、更新、查询和返回。
 它同时拥有已归档 PDF 的本地文档处理：PDF -> TEI -> normalized document -> chunks / FTS。
 
+这里的“解析”指 document parsing / structuring：把 PDF、GROBID TEI 或本地 parser output 转成可持久化的 PaperOS 文档结构。它不同于 RAG 对 embedding provider response、检索结果或 LLM JSON 的解析。
+
 Storage 负责：
 
 - paper / version / identifier / alias。

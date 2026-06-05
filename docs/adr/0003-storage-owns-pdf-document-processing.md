@@ -33,6 +33,15 @@ storage chunks / normalized document
   -> answer / analysis workflow
 ```
 
+## 术语：两种解析
+
+本文中的“解析”分为两类：
+
+- document parsing / structuring：PDF、TEI、GROBID output、normalized document、chunks、FTS。这类解析产出可持久化的论文文档结构，属于 storage。
+- provider/result parsing：embedding provider response、vector-search result、rerank result、LLM answer JSON 或 workflow hints。这类解析只服务于检索、索引或回答流程，属于 RAG 或 workflow。
+
+因此，RAG 可以解析 embedding provider 返回值或检索结果，但不拥有 PDF/GROBID/TEI/chunking 这条可持久化文档处理链。
+
 ## 边界
 
 Storage 仍然不允许：

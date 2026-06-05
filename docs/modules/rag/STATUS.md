@@ -6,6 +6,8 @@
 
 当前 docs 固定边界：RAG 不拥有 PDF parser、GROBID、chunker 或 PDF -> text。Storage 负责 document processing 和 chunks；RAG 负责 FTS/vector retrieval、embedding/vector index、EvidencePack、answer generation 和 search expansion hints。
 
+这里的“解析”只允许指 provider/result parsing，例如 embedding provider response、retrieval result、rerank result、LLM answer JSON 或 search expansion hints。PDF/GROBID/TEI/chunking 的 document parsing 属于 storage。
+
 ## Phase 1: FTS-only RAG
 
 先实现 FTS-only，不上 embedding/vector。

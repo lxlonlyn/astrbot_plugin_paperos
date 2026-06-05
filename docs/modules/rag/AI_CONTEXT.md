@@ -8,11 +8,14 @@
 
 Storage 已拥有 PDF document processing：PDF -> TEI -> normalized document -> chunks / FTS。RAG 从 storage 已生成的 `paper_chunks`、FTS、normalized document 和 citation metadata 开始工作。
 
+RAG 中的“解析”只指 provider/result parsing：解析 embedding provider response、vector-search result、rerank result、LLM answer JSON 或 search expansion hints。RAG 不解析 PDF、GROBID TEI，不生成 storage chunks。
+
 RAG 负责：
 
 - 从 storage 读取 `paper_chunks`、paper metadata、normalized document、index status。
 - FTS-only retrieval：先消费 storage 的 `paper_chunks_fts`，验证 chunks 是否可用。
 - 调用外部 embedding provider 获取 chunk embedding 和 query embedding。
+- 解析 embedding provider 返回值，并把向量和模型 metadata 转成 RAG index records。
 - 写入 vector index，并通过 storage 更新 index status。
 - 执行 FTS/vector/hybrid retrieval。
 - 做 neighbor expansion、fusion、optional rerank。
