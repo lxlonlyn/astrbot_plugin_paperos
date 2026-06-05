@@ -23,10 +23,14 @@ Implemented entry points:
 - `RagIndexService.index_parser_run(parser_run_id)`
 - `RagIndexService.index_paper(paper_id)`
 - `RagIndexService.index_pending_job(job)`
+- `LanceDBVectorStore.upsert_vectors(records)`
+- `LanceDBVectorStore.search(vector, limit=..., profile=...)`
 - `/paperos rag <query>` evidence chunk output
 
 Phase 1 reads `paper_chunks_fts`, `paper_chunks`, neighbor chunks, and paper citation metadata through the storage repository. It does not call an embedding provider, vector index, searcher, or LLM.
 
 Phase 2 indexing resolves AstrBot-configured embedding providers through `context.get_all_embedding_providers()`. PaperOS does not implement Qwen/OpenAI/etc. embedding providers itself; it calls the resolved provider's `get_dim()` and prefers AstrBot `get_embeddings_batch(texts, batch_size=...)`, falling back to batched `get_embeddings(list[str])` only when needed.
+
+Vector index records are rebuildable. LanceDB returns chunk ids and scores; real text and metadata stay in storage.
 
 If local evidence suggests external literature expansion is needed, RAG should return search expansion hints to a command/workflow layer. The workflow may then build a search context and explicitly call searcher.

@@ -20,6 +20,7 @@ This validates storage document processing before adding embedding complexity.
 Current baseline implementation:
 
 - `paperos.rag.providers.resolve_embedding_provider(context, provider_id="")`
+- `paperos.rag.vector.LanceDBVectorStore`
 - `paperos.rag.indexing.RagIndexService.index_parser_run(parser_run_id)`
 - `paperos.rag.indexing.RagIndexService.index_paper(paper_id)`
 - `paperos.rag.indexing.RagIndexService.index_pending_job(job)`
@@ -38,6 +39,14 @@ rag_embed_chunks job
 ```
 
 `RagIndexService` deliberately does not claim jobs or parse commands. It handles one explicit parser run, paper id, or decoded job payload.
+
+`LanceDBVectorStore` owns only vector index operations:
+
+- open the vector index directory;
+- upsert chunk vector records;
+- vector search returns `chunk_id + score`.
+
+LanceDB is not the source of truth. Real chunk text, paper metadata, sections, pages, and citations must still be loaded from storage `paper_chunks` and related tables.
 
 Embedding providers are owned by AstrBot. PaperOS must not implement Qwen/OpenAI/etc. providers directly. It only resolves an already configured AstrBot embedding provider via `context.get_all_embedding_providers()`, then calls `get_dim()`. For chunk embeddings it first uses AstrBot's `get_embeddings_batch(texts, batch_size=...)` helper when available; if that method is absent, it falls back to calling `get_embeddings(list[str])` in PaperOS-sized batches.
 

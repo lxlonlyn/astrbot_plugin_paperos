@@ -9,6 +9,7 @@ from typing import Any, Protocol
 from ..config import RagConfig
 from ..storage.models import ChunkRecord
 from .providers import EmbeddingProviderError, get_embeddings_batched, resolve_embedding_provider
+from .vector import LanceDBVectorStore, VectorStore
 
 
 class RagIndexError(RuntimeError):
@@ -40,44 +41,6 @@ class RagIndexRepository(Protocol):
         profile: str | None = None,
         message: str | None = None,
     ) -> None: ...
-
-
-class VectorStore(Protocol):
-    async def upsert_vectors(self, records: list[dict[str, Any]]) -> None: ...
-
-
-class LanceDBVectorStore:
-    def __init__(self, path: Path, *, table_name: str = "chunk_embeddings"):
-        self.path = Path(path)
-        self.table_name = table_name
-
-    async def upsert_vectors(self, records: list[dict[str, Any]]) -> None:
-        if not records:
-            return
-        try:
-            import lancedb  # type: ignore
-        except Exception as exc:
-            raise RagIndexError(
-                "LanceDB is not installed. Install the plugin requirements or add lancedb "
-                "before running RAG vector indexing."
-            ) from exc
-
-        self.path.mkdir(parents=True, exist_ok=True)
-        db = lancedb.connect(str(self.path))
-        table_names = set(db.table_names())
-        if self.table_name not in table_names:
-            db.create_table(self.table_name, data=records)
-            return
-
-        table = db.open_table(self.table_name)
-        for record in records:
-            table.delete(
-                "chunk_id = "
-                + _quote_lancedb_value(str(record["chunk_id"]))
-                + " AND embedding_model = "
-                + _quote_lancedb_value(str(record["embedding_model"]))
-            )
-        table.add(records)
 
 
 class RagIndexService:
@@ -223,7 +186,3 @@ def _sha256_text(text: str) -> str:
 def _index_profile(provider_id: str, dim: int) -> str:
     raw = f"{provider_id or 'astrbot_embedding'}:dim{dim}"
     return re.sub(r"[^A-Za-z0-9_.:-]+", "_", raw).strip("_")
-
-
-def _quote_lancedb_value(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"

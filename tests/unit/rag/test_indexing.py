@@ -50,6 +50,9 @@ class FakeVectorStore:
     async def upsert_vectors(self, records: list[dict]) -> None:
         self.records.extend(records)
 
+    async def search(self, vector: list[float], *, limit: int = 20, profile: str | None = None):
+        return []
+
 
 def test_resolve_embedding_provider_requires_explicit_choice_when_multiple():
     async def run():
