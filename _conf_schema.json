@@ -204,6 +204,28 @@
       }
     }
   },
+  "rag": {
+    "type": "object",
+    "description": "RAG 检索与索引配置。Embedding provider 使用 AstrBot 已配置的 embedding provider。",
+    "items": {
+      "embedding_provider_id": {
+        "type": "string",
+        "description": "RAG 使用的 AstrBot embedding provider",
+        "hint": "留空时：如果 AstrBot 仅配置一个 embedding provider，则自动使用；如果有多个，需要显式选择。",
+        "default": ""
+      },
+      "embedding_batch_size": {
+        "type": "int",
+        "description": "一次调用 embedding provider 的文本数量",
+        "default": 16
+      },
+      "vector_table_name": {
+        "type": "string",
+        "description": "LanceDB chunk embedding 表名",
+        "default": "chunk_embeddings"
+      }
+    }
+  },
   "search_policy": {
     "type": "object",
     "description": "论文搜索策略",

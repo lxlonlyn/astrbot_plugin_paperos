@@ -155,7 +155,7 @@ stored = await object_store.put_file(
 
 ## RAG Read APIs Needed
 
-RAG Phase 1 需要 repository 增加只读查询方法：
+RAG Phase 1 使用 repository 只读查询方法：
 
 ```python
 await repo.search_chunks_fts(query, paper_id=None, limit=20)
@@ -165,3 +165,19 @@ await repo.get_paper_citation_metadata(paper_id)
 ```
 
 这些方法只读 storage 已生成的 chunks / FTS / citation metadata，不调用 search，不调用 embedding provider。
+
+RAG Phase 2 indexing 使用：
+
+```python
+await repo.get_chunks_for_parser_run(parser_run_id)
+await repo.get_chunks_for_paper(paper_id)
+await repo.update_index_status(
+    paper_id=paper_id,
+    index_name="chunk_embeddings",
+    status="done",
+    profile="provider-id:dim1024",
+    message="indexed 42 chunks",
+)
+```
+
+`get_chunks_for_*` 只返回 storage 已生成的 chunks；`update_index_status` 只保存持久化状态。storage 仍不调用 embedding provider，不写向量索引，不决定 RAG 检索策略。

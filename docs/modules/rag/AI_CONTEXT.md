@@ -19,7 +19,18 @@ Phase 1 最小实现已经可用：
 - `RagService.retrieve_evidence(query, filters=None)`：组合 retrieval 和 evidence builder。
 - `/paperos rag <query>`：返回 evidence chunks，不生成复杂答案。
 
-当前实现不调用 embedding provider，不写 vector index，不调用 searcher，不调用 LLM。
+Phase 2 基础 indexing service 已经可用，但尚未接命令或 job runner：
+
+- `resolve_embedding_provider(context, provider_id="")`：使用 AstrBot context 的 `get_all_embedding_providers()`。
+- 如果配置了 `rag.embedding_provider_id`，按 provider id/name 匹配。
+- 如果未配置且只有一个 embedding provider，自动使用。
+- 如果未配置且有多个 embedding provider，抛出明确配置错误。
+- 调用 provider 的 `get_dim()`；embedding 优先使用 AstrBot `get_embeddings_batch(texts, batch_size=...)`，没有该方法时才按 `rag.embedding_batch_size` 分批调用 `get_embeddings(list[str])`。
+- 不自造 Qwen/OpenAI provider。
+- `RagIndexService.index_parser_run(parser_run_id)` / `index_paper(paper_id)` / `index_pending_job(job)`。
+- 写 LanceDB-compatible vector store，并更新 storage `index_status`。
+
+当前 `/paperos rag <query>` 不调用 embedding provider，不做 vector retrieval，不调用 searcher，不调用 LLM。
 
 RAG 负责：
 
@@ -105,11 +116,14 @@ Phase 1: FTS-only RAG.
 
 Phase 2: embedding + vector index.
 
-- `RagIndexJobRunner` claim `rag_embed_chunks` job。
-- load unembedded chunks。
-- batch embedding API。
+- `RagIndexService` 已实现基础索引能力。
+- job claim / mark done / mark failed 仍由未来 workflow/job runner 负责。
+- load parser_run/paper chunks。
+- resolve AstrBot embedding provider。
+- batch embedding API：优先使用 AstrBot provider 自带的 `get_embeddings_batch`，fallback 到 batched `get_embeddings(list[str])`。
 - write LanceDB or another local vector store。
 - update index status。
+- chunk-level embedding status table 未实现；当前只写 paper-level `index_status`。
 
 Phase 3: hybrid retrieval.
 
@@ -146,3 +160,11 @@ RAG Phase 1 需要 storage repository 提供：
 这些方法只读 storage 已持久化数据，不触发 search，不调用 embedding provider。
 
 当前 SQLite repository 已暴露这些 Phase 1 只读方法。
+
+RAG Phase 2 indexing 需要 storage repository 提供：
+
+- `get_chunks_for_parser_run(parser_run_id)`
+- `get_chunks_for_paper(paper_id)`
+- `update_index_status(paper_id=..., index_name=..., status=..., profile=..., message=...)`
+
+这些方法只读/写 storage 持久化状态，不调用 embedding provider；provider 调用仍在 RAG。

@@ -7,10 +7,19 @@
 - `paperos/rag/models.py`
 - `paperos/rag/retrieval.py`
 - `paperos/rag/context/evidence.py`
+- `paperos/rag/providers.py`
+- `paperos/rag/indexing.py`
 - `paperos/rag/service.py`
 - `paperos/rag/presenter.py`
 
 `/paperos rag <query>` 会读取 storage 已生成的 `paper_chunks_fts`，返回 evidence chunks。它不生成复杂答案，不调用 searcher，不调用 embedding provider。
+
+已新增 Phase 2 的基础索引服务，但尚未接入命令或 job runner：
+
+- `resolve_embedding_provider(context, provider_id="")`：只解析 AstrBot 已配置的 embedding provider。
+- `RagIndexService.index_parser_run(parser_run_id)`：读取 storage chunks，调用 AstrBot embedding provider，写 vector store，并更新 `index_status`。
+- `RagIndexService.index_paper(paper_id)`。
+- `RagIndexService.index_pending_job(job)`：只处理明确 job payload，不 claim、不 mark done/failed。
 
 当前 docs 固定边界：RAG 不拥有 PDF parser、GROBID、chunker 或 PDF -> text。Storage 负责 document processing 和 chunks；RAG 负责 FTS/vector retrieval、embedding/vector index、EvidencePack、answer generation 和 search expansion hints。
 
@@ -41,12 +50,15 @@
 
 ## Phase 2: Embedding + Vector Index
 
-- `RagIndexJobRunner`。
-- claim `rag_embed_chunks` job。
-- load unembedded chunks。
-- batch embedding API。
-- write vector index。
-- update `index_status`。
+- `RagIndexService`：基础实现已完成。
+- load parser_run/paper chunks：已完成。
+- resolve AstrBot embedding provider：已完成。
+- batch embedding API：已完成。
+- write LanceDB-compatible vector store：基础实现已完成，生产环境需要安装 `lancedb`。
+- update `index_status`：已完成。
+- `RagIndexJobRunner`：未实现。
+- claim `rag_embed_chunks` job：未实现，后续由 workflow/job runner 负责。
+- chunk-level embedding status table：未实现；当前只写 paper-level `index_status`，SQLite chunks 仍是真源。
 
 ## Phase 3: Hybrid Retrieval
 

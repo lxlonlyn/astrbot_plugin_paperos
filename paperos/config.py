@@ -74,6 +74,13 @@ class SearchPolicyConfig:
 
 
 @dataclass(frozen=True)
+class RagConfig:
+    embedding_provider_id: str = ""
+    embedding_batch_size: int = 16
+    vector_table_name: str = "chunk_embeddings"
+
+
+@dataclass(frozen=True)
 class PaperOSConfig:
     general: GeneralConfig
     query_analyzer: QueryAnalyzerConfig
@@ -81,6 +88,7 @@ class PaperOSConfig:
     search_policy: SearchPolicyConfig
     core_api: CoreAPIConfig
     storage: StorageConfig
+    rag: RagConfig
 
 
 def _section(raw: Mapping[str, Any], key: str) -> dict[str, Any]:
@@ -140,6 +148,7 @@ def load_config(raw: Mapping[str, Any]) -> PaperOSConfig:
     crawler = _section(raw, "crawler")
     core_api = _section(raw, "core_api")
     search_policy = _section(raw, "search_policy")
+    rag = _section(raw, "rag")
 
     return PaperOSConfig(
         general=GeneralConfig(
@@ -196,6 +205,11 @@ def load_config(raw: Mapping[str, Any]) -> PaperOSConfig:
             sort=str(core_api.get("sort", "relevance") or "relevance"),
         ),
         storage=load_storage_config(raw),
+        rag=RagConfig(
+            embedding_provider_id=str(rag.get("embedding_provider_id", "") or ""),
+            embedding_batch_size=_int(rag.get("embedding_batch_size"), 16, minimum=1, maximum=128),
+            vector_table_name=str(rag.get("vector_table_name", "chunk_embeddings") or "chunk_embeddings"),
+        ),
         search_policy=SearchPolicyConfig(
             accept_min_score=_float(
                 search_policy.get("accept_min_score"), 0.70, minimum=0.0, maximum=1.0

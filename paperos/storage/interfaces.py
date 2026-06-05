@@ -90,6 +90,20 @@ class LocalPaperRepository(Protocol):
 
     async def get_paper_citation_metadata(self, paper_id: str) -> dict[str, Any]: ...
 
+    async def get_chunks_for_parser_run(self, parser_run_id: str) -> list[ChunkRecord]: ...
+
+    async def get_chunks_for_paper(self, paper_id: str) -> list[ChunkRecord]: ...
+
+    async def update_index_status(
+        self,
+        *,
+        paper_id: str,
+        index_name: str,
+        status: str,
+        profile: str | None = None,
+        message: str | None = None,
+    ) -> None: ...
+
 
 class ObjectStore(Protocol):
     async def put_bytes(

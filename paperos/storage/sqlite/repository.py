@@ -934,6 +934,56 @@ class SQLitePaperRepository:
             "identifiers": {str(row["scheme"]): str(row["value"]) for row in identifiers},
         }
 
+    async def get_chunks_for_parser_run(self, parser_run_id: str) -> list[ChunkRecord]:
+        rows = self._conn.execute(
+            """
+            SELECT c.*, p.canonical_title AS paper_title
+            FROM paper_chunks c
+            JOIN papers p ON p.id = c.paper_id
+            WHERE c.parser_run_id = ?
+            ORDER BY c.paper_id, c.chunk_index
+            """,
+            (parser_run_id,),
+        ).fetchall()
+        return [self._chunk_row_to_record(row) for row in rows]
+
+    async def get_chunks_for_paper(self, paper_id: str) -> list[ChunkRecord]:
+        rows = self._conn.execute(
+            """
+            SELECT c.*, p.canonical_title AS paper_title
+            FROM paper_chunks c
+            JOIN papers p ON p.id = c.paper_id
+            WHERE c.paper_id = ?
+            ORDER BY c.chunk_index
+            """,
+            (paper_id,),
+        ).fetchall()
+        return [self._chunk_row_to_record(row) for row in rows]
+
+    async def update_index_status(
+        self,
+        *,
+        paper_id: str,
+        index_name: str,
+        status: str,
+        profile: str | None = None,
+        message: str | None = None,
+    ) -> None:
+        now = utc_now()
+        profile_value = profile or ""
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO index_status(id, paper_id, index_name, status, profile, updated_at, message)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(paper_id, index_name, profile) DO UPDATE SET
+                    status = excluded.status,
+                    updated_at = excluded.updated_at,
+                    message = excluded.message
+                """,
+                (new_id("idx"), paper_id, index_name, status, profile_value, now, message),
+            )
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -984,9 +1034,14 @@ class SQLitePaperRepository:
         return ChunkRecord(
             chunk_id=str(row["id"]),
             paper_id=str(row["paper_id"]),
+            version_id=row["version_id"],
+            object_id=row["object_id"],
+            parser_run_id=row["parser_run_id"],
             title=str(row["paper_title"]),
             chunk_index=int(row["chunk_index"]),
             text=str(row["text"]),
+            embedding_text=row["embedding_text"],
+            content_hash=row["content_hash"],
             section_title=row["section_title"],
             section_path=row["section_path"],
             page_start=row["page_start"],

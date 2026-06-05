@@ -62,6 +62,11 @@ class ChunkRecord:
     title: str
     chunk_index: int
     text: str
+    version_id: str | None = None
+    object_id: str | None = None
+    parser_run_id: str | None = None
+    embedding_text: str | None = None
+    content_hash: str | None = None
     section_title: str | None = None
     section_path: str | None = None
     page_start: int | None = None
