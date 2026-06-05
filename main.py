@@ -2,6 +2,7 @@ from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 import astrbot.api.message_components as Comp
+from pathlib import Path
 
 from .paperos.config import load_config
 from .paperos.rag.models import RagFilters
@@ -81,7 +82,10 @@ class PaperOSPlugin(Star):
         if import_summary is not None:
             text += "\n\n" + self.storage_presenter.format_import_summary(import_summary)
 
-        send_path = stored_pdf_path or (pdf.local_path if pdf is not None else None)
+        send_path = self._first_existing_path(
+            stored_pdf_path,
+            pdf.local_path if pdf is not None else None,
+        )
         if send_path:
             yield event.chain_result([
                 Comp.Plain(text + "\n\n已取得合格 PDF，尝试发送文件："),
@@ -188,7 +192,7 @@ class PaperOSPlugin(Star):
             auto_import=search_storage is not None,
             selection="selected",
             process_document=True,
-            cleanup_temporary_pdf=True,
+            cleanup_temporary_pdf=False,
             ignore_import_errors=True,
         )
         if discovery.import_error:
@@ -205,6 +209,16 @@ class PaperOSPlugin(Star):
         for item in summary.results:
             if item.imported_pdf and item.object_path:
                 return item.object_path
+        return None
+
+    def _first_existing_path(self, *paths: str | None) -> str | None:
+        for path in paths:
+            if not path:
+                continue
+            candidate = Path(path)
+            if candidate.exists():
+                return str(candidate.resolve())
+            logger.warning("[PaperOS] skip missing file path before sending: %s", path)
         return None
 
     def _extract_after_command(self, raw: str, command_candidates: list[str]) -> str:
