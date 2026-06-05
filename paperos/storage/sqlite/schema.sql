@@ -284,6 +284,29 @@ CREATE INDEX IF NOT EXISTS idx_paper_chunks_paper_id ON paper_chunks(paper_id);
 CREATE INDEX IF NOT EXISTS idx_paper_chunks_parser_run_id ON paper_chunks(parser_run_id);
 CREATE INDEX IF NOT EXISTS idx_paper_chunks_content_hash ON paper_chunks(content_hash);
 
+CREATE TABLE IF NOT EXISTS chunk_embedding_status (
+    id TEXT PRIMARY KEY,
+    chunk_id TEXT NOT NULL REFERENCES paper_chunks(id) ON DELETE CASCADE,
+    paper_id TEXT NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    parser_run_id TEXT REFERENCES parser_runs(id) ON DELETE CASCADE,
+    content_hash TEXT NOT NULL,
+    embedding_provider_id TEXT NOT NULL,
+    embedding_model TEXT NOT NULL,
+    embedding_dim INTEGER NOT NULL,
+    vector_backend TEXT NOT NULL,
+    vector_profile TEXT NOT NULL,
+    vector_table TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(chunk_id, content_hash, embedding_provider_id, embedding_model, embedding_dim, vector_profile)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunk_embedding_status_paper_id ON chunk_embedding_status(paper_id);
+CREATE INDEX IF NOT EXISTS idx_chunk_embedding_status_parser_run_id ON chunk_embedding_status(parser_run_id);
+CREATE INDEX IF NOT EXISTS idx_chunk_embedding_status_status ON chunk_embedding_status(status);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS paper_chunks_fts USING fts5(
     chunk_id UNINDEXED,
     paper_id UNINDEXED,

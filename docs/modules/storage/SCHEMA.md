@@ -175,6 +175,34 @@ searcher/provider 找到并验证过的全文位置。
 
 `text` 保存原始 chunk 正文；`embedding_text` 保存未来传给 embedding provider 的格式化文本。storage 生成 `embedding_text`，但不调用 embedding provider。
 
+## chunk_embedding_status
+
+记录 chunk-level embedding/vector 写入状态，用来避免重复调用 embedding provider，并在 chunk 内容变化时识别 stale 状态。
+
+唯一键：
+
+```text
+chunk_id + content_hash + embedding_provider_id + embedding_model + embedding_dim + vector_profile
+```
+
+关键字段：
+
+- `chunk_id`
+- `paper_id`
+- `parser_run_id`
+- `content_hash`
+- `embedding_provider_id`
+- `embedding_model`
+- `embedding_dim`
+- `vector_backend`
+- `vector_profile`
+- `vector_table`
+- `status`
+- `error_message`
+- `created_at`, `updated_at`
+
+真实正文、section、page、citation 仍回 SQLite `paper_chunks` 和相关表读取；vector index record 不保存 chunk 正文。
+
 ## parser_runs
 
 记录每次 PDF 文档处理。
@@ -232,4 +260,4 @@ version
 updated_at
 ```
 
-index status 只描述持久化状态。FTS/document processing 状态可由 storage 更新；vector/embedding index 状态由 RAG 更新。
+index status 只描述 paper-level 持久化汇总状态。FTS/document processing 状态可由 storage 更新；embedding 调用由 RAG 执行，但 chunk-level 结果状态必须通过 storage repository 写入 `chunk_embedding_status`。

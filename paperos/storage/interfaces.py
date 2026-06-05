@@ -1,10 +1,90 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
 from .models import ChunkRecord, PaperRecordDraft
 from .objects import StoredObject
+
+
+@dataclass(frozen=True)
+class VectorRecord:
+    id: str
+    chunk_id: str
+    paper_id: str
+    vector: list[float]
+    embedding_model: str
+    provider_id: str
+    content_hash: str
+    parser_run_id: str | None = None
+    chunk_index: int | None = None
+    section_path: str | None = None
+    page_start: int | None = None
+    page_end: int | None = None
+    chunk_type: str | None = None
+    profile: str | None = None
+
+
+@dataclass(frozen=True)
+class VectorSearchRecord:
+    chunk_id: str
+    score: float
+
+
+@dataclass(frozen=True)
+class ChunkEmbeddingStatusRecord:
+    id: str
+    chunk_id: str
+    paper_id: str
+    parser_run_id: str | None
+    content_hash: str
+    embedding_provider_id: str
+    embedding_model: str
+    embedding_dim: int
+    vector_backend: str
+    vector_profile: str
+    vector_table: str
+    status: str
+    error_message: str | None
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class ChunkEmbeddingStatusDraft:
+    chunk_id: str
+    paper_id: str
+    content_hash: str
+    embedding_provider_id: str
+    embedding_model: str
+    embedding_dim: int
+    vector_backend: str
+    vector_profile: str
+    vector_table: str
+    status: str
+    parser_run_id: str | None = None
+    error_message: str | None = None
+
+
+@dataclass(frozen=True)
+class ChunkEmbeddingStatusSummary:
+    total_chunks: int
+    status_counts: dict[str, int]
+    missing_count: int
+    stale_count: int
+
+
+class LocalVectorIndex(Protocol):
+    async def upsert_vectors(self, records: list[VectorRecord]) -> None: ...
+
+    async def search(
+        self,
+        vector: list[float],
+        *,
+        limit: int = 20,
+        profile: str | None = None,
+    ) -> list[VectorSearchRecord]: ...
 
 
 class LocalPaperRepository(Protocol):
@@ -103,6 +183,44 @@ class LocalPaperRepository(Protocol):
         profile: str | None = None,
         message: str | None = None,
     ) -> None: ...
+
+    async def get_chunk_embedding_status(
+        self,
+        *,
+        chunk_id: str,
+        content_hash: str,
+        embedding_provider_id: str,
+        embedding_model: str,
+        embedding_dim: int,
+        vector_profile: str,
+    ) -> ChunkEmbeddingStatusRecord | None: ...
+
+    async def upsert_chunk_embedding_status(
+        self,
+        draft: ChunkEmbeddingStatusDraft,
+    ) -> str: ...
+
+    async def list_missing_or_stale_chunk_embeddings(
+        self,
+        *,
+        paper_id: str | None = None,
+        parser_run_id: str | None = None,
+        embedding_provider_id: str,
+        embedding_model: str,
+        embedding_dim: int,
+        vector_profile: str,
+        limit: int = 100,
+    ) -> list[ChunkRecord]: ...
+
+    async def summarize_chunk_embedding_status(
+        self,
+        *,
+        paper_id: str,
+        embedding_provider_id: str | None = None,
+        embedding_model: str | None = None,
+        embedding_dim: int | None = None,
+        vector_profile: str | None = None,
+    ) -> ChunkEmbeddingStatusSummary: ...
 
 
 class ObjectStore(Protocol):

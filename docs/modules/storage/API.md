@@ -178,6 +178,18 @@ await repo.update_index_status(
     profile="provider-id:dim1024",
     message="indexed 42 chunks",
 )
+await repo.upsert_chunk_embedding_status(...)
+await repo.list_missing_or_stale_chunk_embeddings(...)
+await repo.summarize_chunk_embedding_status(paper_id=paper_id)
 ```
 
-`get_chunks_for_*` 只返回 storage 已生成的 chunks；`update_index_status` 只保存持久化状态。storage 仍不调用 embedding provider，不写向量索引，不决定 RAG 检索策略。
+`get_chunks_for_*` 只返回 storage 已生成的 chunks；`chunk_embedding_status` 记录 chunk-level embedding/index 状态；`index_status` 保存 paper-level 汇总状态。
+
+storage 拥有本地 vector index 的物理读写接口：
+
+```python
+await storage.vector_index.upsert_vectors(records)
+await storage.vector_index.search(vector, limit=20, profile="provider:model")
+```
+
+vector index 只保存可重建的向量记录与 `chunk_id`，不保存 chunk 正文。storage 仍不调用 embedding provider，不决定 RAG 检索策略，不生成答案。

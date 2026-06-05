@@ -24,6 +24,8 @@ class StorageConfig:
     sqlite_synchronous: str = "NORMAL"
     grobid_base_url: str = "http://localhost:8070"
     grobid_timeout_seconds: float = 120.0
+    vector_backend: str = "lancedb"
+    vector_table_name: str = "chunk_embeddings"
 
 
 def load_storage_config(raw: Mapping[str, Any]) -> StorageConfig:
@@ -43,6 +45,8 @@ def load_storage_config(raw: Mapping[str, Any]) -> StorageConfig:
         sqlite_synchronous=str(section.get("sqlite_synchronous", "NORMAL") or "NORMAL").upper(),
         grobid_base_url=str(section.get("grobid_base_url", "http://localhost:8070") or "http://localhost:8070").rstrip("/"),
         grobid_timeout_seconds=float(section.get("grobid_timeout_seconds", 120.0) or 120.0),
+        vector_backend=str(section.get("vector_backend", "lancedb") or "lancedb").lower(),
+        vector_table_name=str(section.get("vector_table_name", "chunk_embeddings") or "chunk_embeddings"),
     )
 
 

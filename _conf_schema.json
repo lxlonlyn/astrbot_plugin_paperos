@@ -201,6 +201,17 @@
         "type": "float",
         "description": "GROBID 单次 PDF 解析请求超时时间，秒。",
         "default": 120.0
+      },
+      "vector_backend": {
+        "type": "string",
+        "description": "storage 管理的本地向量索引后端。当前支持 lancedb。",
+        "default": "lancedb",
+        "options": ["lancedb"]
+      },
+      "vector_table_name": {
+        "type": "string",
+        "description": "storage 管理的 LanceDB chunk embedding 表名。",
+        "default": "chunk_embeddings"
       }
     }
   },
@@ -218,11 +229,6 @@
         "type": "int",
         "description": "一次调用 embedding provider 的文本数量",
         "default": 16
-      },
-      "vector_table_name": {
-        "type": "string",
-        "description": "LanceDB chunk embedding 表名",
-        "default": "chunk_embeddings"
       }
     }
   },

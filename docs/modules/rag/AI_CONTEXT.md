@@ -28,8 +28,8 @@ Phase 2 基础 indexing service 已经可用，但尚未接命令或 job runner�
 - 调用 provider 的 `get_dim()`；embedding 优先使用 AstrBot `get_embeddings_batch(texts, batch_size=...)`，没有该方法时才按 `rag.embedding_batch_size` 分批调用 `get_embeddings(list[str])`。
 - 不自造 Qwen/OpenAI provider。
 - `RagIndexService.index_parser_run(parser_run_id)` / `index_paper(paper_id)` / `index_pending_job(job)`。
-- `LanceDBVectorStore.upsert_vectors(records)` 写可重建 vector index。
-- `LanceDBVectorStore.search(vector, limit=..., profile=...)` 只返回 `chunk_id + score`。
+- storage-owned `LanceDBVectorIndex.upsert_vectors(records)` 写可重建 vector index。
+- storage-owned `LanceDBVectorIndex.search(vector, limit=..., profile=...)` 只返回 `chunk_id + score`。
 - RAG 正文、metadata、citation 仍必须从 storage 读取；LanceDB 不是 source of truth。
 - indexing service 会写 LanceDB-compatible vector store，并更新 storage `index_status`。
 
@@ -120,14 +120,14 @@ Phase 1: FTS-only RAG.
 Phase 2: embedding + vector index.
 
 - `RagIndexService` 已实现基础索引能力。
-- `LanceDBVectorStore` 已从 indexing service 拆出到 `paperos/rag/vector.py`。
+- storage 已提供 `paperos.storage.vector.LanceDBVectorIndex`；RAG indexing 后续需要迁移到 storage-owned vector interface。
 - job claim / mark done / mark failed 仍由未来 workflow/job runner 负责。
 - load parser_run/paper chunks。
 - resolve AstrBot embedding provider。
 - batch embedding API：优先使用 AstrBot provider 自带的 `get_embeddings_batch`，fallback 到 batched `get_embeddings(list[str])`。
 - write LanceDB or another local vector store。
 - update index status。
-- chunk-level embedding status table 未实现；当前只写 paper-level `index_status`。
+- storage 已实现 chunk-level `chunk_embedding_status`；RAG indexing 后续需要迁移使用。
 - `RagVectorService` / `VectorRetriever` / hybrid retrieval 尚未实现；不要把它们塞进 `RagIndexService`。
 
 Phase 3: hybrid retrieval.

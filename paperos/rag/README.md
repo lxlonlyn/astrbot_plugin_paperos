@@ -23,8 +23,8 @@ Implemented entry points:
 - `RagIndexService.index_parser_run(parser_run_id)`
 - `RagIndexService.index_paper(paper_id)`
 - `RagIndexService.index_pending_job(job)`
-- `LanceDBVectorStore.upsert_vectors(records)`
-- `LanceDBVectorStore.search(vector, limit=..., profile=...)`
+- storage-owned `LanceDBVectorIndex.upsert_vectors(records)`
+- storage-owned `LanceDBVectorIndex.search(vector, limit=..., profile=...)`
 - `/paperos rag <query>` evidence chunk output
 
 Phase 1 reads `paper_chunks_fts`, `paper_chunks`, neighbor chunks, and paper citation metadata through the storage repository. It does not call an embedding provider, vector index, searcher, or LLM.

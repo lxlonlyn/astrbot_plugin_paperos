@@ -77,6 +77,8 @@ class SearchPolicyConfig:
 class RagConfig:
     embedding_provider_id: str = ""
     embedding_batch_size: int = 16
+    # Backward compatibility for the current RAG indexing implementation.
+    # The storage module owns the physical vector table name.
     vector_table_name: str = "chunk_embeddings"
 
 
@@ -150,6 +152,8 @@ def load_config(raw: Mapping[str, Any]) -> PaperOSConfig:
     search_policy = _section(raw, "search_policy")
     rag = _section(raw, "rag")
 
+    storage_cfg = load_storage_config(raw)
+
     return PaperOSConfig(
         general=GeneralConfig(
             default_provider_id=str(general.get("default_provider_id", "") or ""),
@@ -204,11 +208,11 @@ def load_config(raw: Mapping[str, Any]) -> PaperOSConfig:
             ),
             sort=str(core_api.get("sort", "relevance") or "relevance"),
         ),
-        storage=load_storage_config(raw),
+        storage=storage_cfg,
         rag=RagConfig(
             embedding_provider_id=str(rag.get("embedding_provider_id", "") or ""),
             embedding_batch_size=_int(rag.get("embedding_batch_size"), 16, minimum=1, maximum=128),
-            vector_table_name=str(rag.get("vector_table_name", "chunk_embeddings") or "chunk_embeddings"),
+            vector_table_name=storage_cfg.vector_table_name,
         ),
         search_policy=SearchPolicyConfig(
             accept_min_score=_float(

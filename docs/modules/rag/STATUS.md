@@ -21,8 +21,7 @@
 - `RagIndexService.index_parser_run(parser_run_id)`：读取 storage chunks，调用 AstrBot embedding provider，写 vector store，并更新 `index_status`。
 - `RagIndexService.index_paper(paper_id)`。
 - `RagIndexService.index_pending_job(job)`：只处理明确 job payload，不 claim、不 mark done/failed。
-- `LanceDBVectorStore.upsert_vectors(records)`：写可重建的 chunk vector records。
-- `LanceDBVectorStore.search(vector, limit=..., profile=...)`：只返回 `chunk_id + score`，正文仍从 storage 读取；当前尚未接入 `RagService` 或 hybrid retrieval。
+- storage 已提供 `LocalVectorIndex` / `LanceDBVectorIndex`：写可重建的 chunk vector records，只返回 `chunk_id + score`，正文仍从 storage 读取；RAG indexing 后续需要迁移到该 storage-owned 接口。
 
 当前 docs 固定边界：RAG 不拥有 PDF parser、GROBID、chunker 或 PDF -> text。Storage 负责 document processing 和 chunks；RAG 负责 FTS/vector retrieval、embedding/vector index、EvidencePack、answer generation 和 search expansion hints。
 
@@ -62,7 +61,7 @@
 - update `index_status`：已完成。
 - `RagIndexJobRunner`：未实现。
 - claim `rag_embed_chunks` job：未实现，后续由 workflow/job runner 负责。
-- chunk-level embedding status table：未实现；当前只写 paper-level `index_status`，SQLite chunks 仍是真源。
+- chunk-level embedding status table：storage 已实现 `chunk_embedding_status` 和 repository 方法；RAG indexing 后续需要迁移使用。
 - `RagVectorService` / `VectorRetriever` / hybrid retrieval：未实现。
 
 ## Phase 3: Hybrid Retrieval

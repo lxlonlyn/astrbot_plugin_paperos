@@ -15,12 +15,16 @@ def test_storage_config_loads_grobid_settings():
             "storage": {
                 "grobid_base_url": "http://grobid.internal:8070/",
                 "grobid_timeout_seconds": 42,
+                "vector_backend": "lancedb",
+                "vector_table_name": "paperos_vectors",
             }
         }
     )
 
     assert cfg.grobid_base_url == "http://grobid.internal:8070"
     assert cfg.grobid_timeout_seconds == 42.0
+    assert cfg.vector_backend == "lancedb"
+    assert cfg.vector_table_name == "paperos_vectors"
 
 
 def test_document_processor_uses_storage_grobid_config():

@@ -8,10 +8,12 @@ from paperos.storage.diagnostics import StorageDiagnostics
 from paperos.storage.document.grobid_models import DocumentBlock, DocumentSection, NormalizedDocument
 from paperos.storage.factory import PaperOSStorageContext
 from paperos.storage.importer import PaperImportRequest, PaperStorageImporter
+from paperos.storage.interfaces import ChunkEmbeddingStatusDraft
 from paperos.storage.models import FulltextLocationRecord, PaperRecordDraft
 from paperos.storage.objects import LocalFileObjectStore
 from paperos.storage.paths import PaperOSPaths
 from paperos.storage.sqlite.repository import SQLitePaperRepository
+from paperos.storage.vector import LanceDBVectorIndex
 
 
 class FakeDocumentProcessor:
@@ -300,6 +302,115 @@ def test_document_processing_schema_and_extended_chunks(tmp_path):
     asyncio.run(run())
 
 
+def test_chunk_embedding_status_tracks_missing_and_current_hash(tmp_path):
+    async def run():
+        repo = SQLitePaperRepository(tmp_path / "paperos.sqlite3", StorageConfig())
+        await repo.initialize()
+        draft = PaperRecordDraft(title="Attention Is All You Need", year=2017, doi="10.5555/attention", source="test")
+        paper_id = await repo.upsert_paper(draft, source_query="attention")
+        version_id = repo.conn.execute("SELECT current_version_id FROM papers WHERE id=?", (paper_id,)).fetchone()["current_version_id"]
+        parser_run_id = "pr_embedding_status"
+        repo.conn.execute(
+            """
+            INSERT INTO parser_runs(
+                id, paper_id, version_id, parser_name, parser_version, status,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, 'test-parser', '0', 'done', 'now', 'now')
+            """,
+            (parser_run_id, paper_id, version_id),
+        )
+        await repo.replace_chunks(
+            paper_id=paper_id,
+            version_id=version_id,
+            object_id=None,
+            parser_run_id=parser_run_id,
+            chunks=[
+                {
+                    "chunk_type": "paragraph",
+                    "section_title": "Intro",
+                    "text": "Chunk one.",
+                    "embedding_text": "Chunk one.",
+                    "content_hash": "hash-current",
+                },
+                {
+                    "chunk_type": "paragraph",
+                    "section_title": "Intro",
+                    "text": "Chunk two.",
+                    "embedding_text": "Chunk two.",
+                    "content_hash": "hash-two",
+                },
+            ],
+        )
+        chunks = await repo.get_chunks_for_parser_run(parser_run_id)
+        first = chunks[0]
+
+        status_id = await repo.upsert_chunk_embedding_status(
+            ChunkEmbeddingStatusDraft(
+                chunk_id=first.chunk_id,
+                paper_id=paper_id,
+                parser_run_id=parser_run_id,
+                content_hash=first.content_hash or "",
+                embedding_provider_id="provider-a",
+                embedding_model="model-a",
+                embedding_dim=3,
+                vector_backend="lancedb",
+                vector_profile="provider-a:model-a",
+                vector_table="chunk_embeddings",
+                status="done",
+            )
+        )
+
+        status = await repo.get_chunk_embedding_status(
+            chunk_id=first.chunk_id,
+            content_hash=first.content_hash or "",
+            embedding_provider_id="provider-a",
+            embedding_model="model-a",
+            embedding_dim=3,
+            vector_profile="provider-a:model-a",
+        )
+        assert status is not None
+        assert status.id == status_id
+        assert status.status == "done"
+
+        missing = await repo.list_missing_or_stale_chunk_embeddings(
+            paper_id=paper_id,
+            embedding_provider_id="provider-a",
+            embedding_model="model-a",
+            embedding_dim=3,
+            vector_profile="provider-a:model-a",
+        )
+        assert [item.chunk_index for item in missing] == [1]
+
+        summary = await repo.summarize_chunk_embedding_status(
+            paper_id=paper_id,
+            embedding_provider_id="provider-a",
+            embedding_model="model-a",
+            embedding_dim=3,
+            vector_profile="provider-a:model-a",
+        )
+        assert summary.total_chunks == 2
+        assert summary.status_counts == {"done": 1, "missing": 1}
+        assert summary.missing_count == 1
+        assert summary.stale_count == 0
+
+        repo.conn.execute(
+            "UPDATE paper_chunks SET content_hash = ? WHERE id = ?",
+            ("hash-new", first.chunk_id),
+        )
+        stale_summary = await repo.summarize_chunk_embedding_status(
+            paper_id=paper_id,
+            embedding_provider_id="provider-a",
+            embedding_model="model-a",
+            embedding_dim=3,
+            vector_profile="provider-a:model-a",
+        )
+        assert stale_summary.missing_count == 2
+        assert stale_summary.stale_count == 1
+        await repo.aclose()
+
+    asyncio.run(run())
+
+
 def test_paths_create_plugin_data_index_subdirectories(tmp_path):
     cfg = StorageConfig(root_dir=str(tmp_path / "paperos_data"))
     paths = PaperOSPaths.from_config(cfg, plugin_name="astrbot_plugin_paperos")
@@ -326,6 +437,7 @@ def test_storage_diagnostics_status_and_info(tmp_path):
             paths=paths,
             repository=repo,
             object_store=store,
+            vector_index=LanceDBVectorIndex(paths.index_dir / "lancedb"),
         )
 
         pdf_path = tmp_path / "paper.pdf"

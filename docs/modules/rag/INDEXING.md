@@ -20,7 +20,7 @@ This validates storage document processing before adding embedding complexity.
 Current baseline implementation:
 
 - `paperos.rag.providers.resolve_embedding_provider(context, provider_id="")`
-- `paperos.rag.vector.LanceDBVectorStore`
+- storage-owned `paperos.storage.vector.LanceDBVectorIndex`
 - `paperos.rag.indexing.RagIndexService.index_parser_run(parser_run_id)`
 - `paperos.rag.indexing.RagIndexService.index_paper(paper_id)`
 - `paperos.rag.indexing.RagIndexService.index_pending_job(job)`
@@ -40,7 +40,7 @@ rag_embed_chunks job
 
 `RagIndexService` deliberately does not claim jobs or parse commands. It handles one explicit parser run, paper id, or decoded job payload.
 
-`LanceDBVectorStore` owns only vector index operations:
+`LanceDBVectorIndex` owns only vector index operations:
 
 - open the vector index directory;
 - upsert chunk vector records;
@@ -76,7 +76,7 @@ text
 - Vector index is rebuildable.
 - SQLite/storage chunks are the source of truth.
 - RAG calls embedding providers; storage never does.
-- Current implementation writes paper-level `index_status`; chunk-level embedding status can be added later if needed.
+- storage 已提供 `chunk_embedding_status`；RAG indexing 后续应在每个 chunk embedding 写入后通过 repository 更新该表，并继续维护 paper-level `index_status` 汇总。
 
 ## Job Names
 

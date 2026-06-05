@@ -10,6 +10,11 @@ from typing import Any, Iterable
 
 from ..config import StorageConfig
 from ..ids import new_id
+from ..interfaces import (
+    ChunkEmbeddingStatusDraft,
+    ChunkEmbeddingStatusRecord,
+    ChunkEmbeddingStatusSummary,
+)
 from ..models import ChunkRecord, FulltextLocationRecord, PaperRecordDraft
 from ..objects import StoredObject
 from ..text import normalize_identifier, normalize_text
@@ -22,6 +27,7 @@ SCHEMA_NAME = "initial_storage_schema"
 KNOWN_SCHEMA_OBJECTS = [
     "index_status",
     "paper_chunks_fts",
+    "chunk_embedding_status",
     "paper_chunks",
     "paper_references",
     "extracted_assets",
@@ -161,6 +167,23 @@ REQUIRED_SCHEMA_COLUMNS = {
         "token_count",
         "metadata_json",
         "created_at",
+    },
+    "chunk_embedding_status": {
+        "id",
+        "chunk_id",
+        "paper_id",
+        "parser_run_id",
+        "content_hash",
+        "embedding_provider_id",
+        "embedding_model",
+        "embedding_dim",
+        "vector_backend",
+        "vector_profile",
+        "vector_table",
+        "status",
+        "error_message",
+        "created_at",
+        "updated_at",
     },
 }
 
@@ -984,6 +1007,226 @@ class SQLitePaperRepository:
                 (new_id("idx"), paper_id, index_name, status, profile_value, now, message),
             )
 
+    async def get_chunk_embedding_status(
+        self,
+        *,
+        chunk_id: str,
+        content_hash: str,
+        embedding_provider_id: str,
+        embedding_model: str,
+        embedding_dim: int,
+        vector_profile: str,
+    ) -> ChunkEmbeddingStatusRecord | None:
+        row = self._conn.execute(
+            """
+            SELECT *
+            FROM chunk_embedding_status
+            WHERE chunk_id = ?
+              AND content_hash = ?
+              AND embedding_provider_id = ?
+              AND embedding_model = ?
+              AND embedding_dim = ?
+              AND vector_profile = ?
+            """,
+            (
+                chunk_id,
+                content_hash,
+                embedding_provider_id,
+                embedding_model,
+                embedding_dim,
+                vector_profile,
+            ),
+        ).fetchone()
+        return self._embedding_status_row_to_record(row) if row else None
+
+    async def upsert_chunk_embedding_status(self, draft: ChunkEmbeddingStatusDraft) -> str:
+        now = utc_now()
+        existing = self._conn.execute(
+            """
+            SELECT id, created_at
+            FROM chunk_embedding_status
+            WHERE chunk_id = ?
+              AND content_hash = ?
+              AND embedding_provider_id = ?
+              AND embedding_model = ?
+              AND embedding_dim = ?
+              AND vector_profile = ?
+            """,
+            (
+                draft.chunk_id,
+                draft.content_hash,
+                draft.embedding_provider_id,
+                draft.embedding_model,
+                draft.embedding_dim,
+                draft.vector_profile,
+            ),
+        ).fetchone()
+        status_id = str(existing["id"]) if existing else new_id("emb")
+        created_at = str(existing["created_at"]) if existing else now
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO chunk_embedding_status(
+                    id, chunk_id, paper_id, parser_run_id, content_hash,
+                    embedding_provider_id, embedding_model, embedding_dim,
+                    vector_backend, vector_profile, vector_table, status,
+                    error_message, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(
+                    chunk_id, content_hash, embedding_provider_id, embedding_model,
+                    embedding_dim, vector_profile
+                ) DO UPDATE SET
+                    paper_id = excluded.paper_id,
+                    parser_run_id = excluded.parser_run_id,
+                    vector_backend = excluded.vector_backend,
+                    vector_table = excluded.vector_table,
+                    status = excluded.status,
+                    error_message = excluded.error_message,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    status_id,
+                    draft.chunk_id,
+                    draft.paper_id,
+                    draft.parser_run_id,
+                    draft.content_hash,
+                    draft.embedding_provider_id,
+                    draft.embedding_model,
+                    draft.embedding_dim,
+                    draft.vector_backend,
+                    draft.vector_profile,
+                    draft.vector_table,
+                    draft.status,
+                    draft.error_message,
+                    created_at,
+                    now,
+                ),
+            )
+        return status_id
+
+    async def list_missing_or_stale_chunk_embeddings(
+        self,
+        *,
+        paper_id: str | None = None,
+        parser_run_id: str | None = None,
+        embedding_provider_id: str,
+        embedding_model: str,
+        embedding_dim: int,
+        vector_profile: str,
+        limit: int = 100,
+    ) -> list[ChunkRecord]:
+        filters: list[str] = []
+        params: list[Any] = [
+            embedding_provider_id,
+            embedding_model,
+            embedding_dim,
+            vector_profile,
+        ]
+        if paper_id:
+            filters.append("c.paper_id = ?")
+            params.append(paper_id)
+        if parser_run_id:
+            filters.append("c.parser_run_id = ?")
+            params.append(parser_run_id)
+        where = (" AND " + " AND ".join(filters)) if filters else ""
+        params.append(max(1, int(limit)))
+        rows = self._conn.execute(
+            f"""
+            SELECT c.*, p.canonical_title AS paper_title
+            FROM paper_chunks c
+            JOIN papers p ON p.id = c.paper_id
+            LEFT JOIN chunk_embedding_status s
+              ON s.chunk_id = c.id
+             AND s.content_hash = c.content_hash
+             AND s.embedding_provider_id = ?
+             AND s.embedding_model = ?
+             AND s.embedding_dim = ?
+             AND s.vector_profile = ?
+            WHERE s.id IS NULL{where}
+            ORDER BY c.paper_id, c.chunk_index
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+        return [self._chunk_row_to_record(row) for row in rows]
+
+    async def summarize_chunk_embedding_status(
+        self,
+        *,
+        paper_id: str,
+        embedding_provider_id: str | None = None,
+        embedding_model: str | None = None,
+        embedding_dim: int | None = None,
+        vector_profile: str | None = None,
+    ) -> ChunkEmbeddingStatusSummary:
+        total_chunks = int(
+            self._conn.execute(
+                "SELECT COUNT(*) FROM paper_chunks WHERE paper_id = ?",
+                (paper_id,),
+            ).fetchone()[0]
+        )
+
+        join_filters = ["s.chunk_id = c.id", "s.content_hash = c.content_hash"]
+        params: list[Any] = []
+        if embedding_provider_id is not None:
+            join_filters.append("s.embedding_provider_id = ?")
+            params.append(embedding_provider_id)
+        if embedding_model is not None:
+            join_filters.append("s.embedding_model = ?")
+            params.append(embedding_model)
+        if embedding_dim is not None:
+            join_filters.append("s.embedding_dim = ?")
+            params.append(embedding_dim)
+        if vector_profile is not None:
+            join_filters.append("s.vector_profile = ?")
+            params.append(vector_profile)
+
+        rows = self._conn.execute(
+            f"""
+            SELECT COALESCE(s.status, 'missing') AS status, COUNT(*) AS count
+            FROM paper_chunks c
+            LEFT JOIN chunk_embedding_status s
+              ON {" AND ".join(join_filters)}
+            WHERE c.paper_id = ?
+            GROUP BY COALESCE(s.status, 'missing')
+            """,
+            tuple([*params, paper_id]),
+        ).fetchall()
+        status_counts = {str(row["status"]): int(row["count"]) for row in rows}
+
+        stale_filters = ["s.chunk_id = c.id", "s.content_hash <> c.content_hash"]
+        stale_params: list[Any] = []
+        if embedding_provider_id is not None:
+            stale_filters.append("s.embedding_provider_id = ?")
+            stale_params.append(embedding_provider_id)
+        if embedding_model is not None:
+            stale_filters.append("s.embedding_model = ?")
+            stale_params.append(embedding_model)
+        if embedding_dim is not None:
+            stale_filters.append("s.embedding_dim = ?")
+            stale_params.append(embedding_dim)
+        if vector_profile is not None:
+            stale_filters.append("s.vector_profile = ?")
+            stale_params.append(vector_profile)
+        stale_count = int(
+            self._conn.execute(
+                f"""
+                SELECT COUNT(DISTINCT c.id)
+                FROM paper_chunks c
+                JOIN chunk_embedding_status s ON {" AND ".join(stale_filters)}
+                WHERE c.paper_id = ?
+                """,
+                tuple([*stale_params, paper_id]),
+            ).fetchone()[0]
+        )
+        return ChunkEmbeddingStatusSummary(
+            total_chunks=total_chunks,
+            status_counts=status_counts,
+            missing_count=status_counts.get("missing", 0),
+            stale_count=stale_count,
+        )
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -1051,6 +1294,25 @@ class SQLitePaperRepository:
             score=score,
             rank=rank,
             metadata=metadata,
+        )
+
+    def _embedding_status_row_to_record(self, row: sqlite3.Row) -> ChunkEmbeddingStatusRecord:
+        return ChunkEmbeddingStatusRecord(
+            id=str(row["id"]),
+            chunk_id=str(row["chunk_id"]),
+            paper_id=str(row["paper_id"]),
+            parser_run_id=row["parser_run_id"],
+            content_hash=str(row["content_hash"]),
+            embedding_provider_id=str(row["embedding_provider_id"]),
+            embedding_model=str(row["embedding_model"]),
+            embedding_dim=int(row["embedding_dim"]),
+            vector_backend=str(row["vector_backend"]),
+            vector_profile=str(row["vector_profile"]),
+            vector_table=str(row["vector_table"]),
+            status=str(row["status"]),
+            error_message=row["error_message"],
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
         )
 
     def _upsert_identifier(self, paper_id: str, scheme: str, value: str, source: str | None, now: str) -> None:
