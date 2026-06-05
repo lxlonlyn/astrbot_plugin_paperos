@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Protocol
 
-from .models import PaperRecordDraft
+from .models import ChunkRecord, PaperRecordDraft
 from .objects import StoredObject
 
 
@@ -69,6 +69,26 @@ class LocalPaperRepository(Protocol):
         self,
         **kwargs: Any,
     ) -> str: ...
+
+    async def search_chunks_fts(
+        self,
+        query: str,
+        *,
+        paper_id: str | None = None,
+        limit: int = 20,
+    ) -> list[ChunkRecord]: ...
+
+    async def get_chunks_by_ids(self, ids: list[str]) -> list[ChunkRecord]: ...
+
+    async def get_neighbor_chunks(
+        self,
+        chunk_id: str,
+        *,
+        before: int = 1,
+        after: int = 1,
+    ) -> list[ChunkRecord]: ...
+
+    async def get_paper_citation_metadata(self, paper_id: str) -> dict[str, Any]: ...
 
 
 class ObjectStore(Protocol):

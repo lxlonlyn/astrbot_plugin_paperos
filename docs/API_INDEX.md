@@ -55,9 +55,15 @@
 - `/paperos storage info <paper_id|doi|arxiv|title>`
   - 查询本地论文、identifier、object、verified PDF、chunk、index status 和最近 jobs。
 
+- `/paperos rag <query>`
+  - 调用 `RagService.retrieve_evidence(...)`。
+  - 只读取 storage 已生成的 `paper_chunks_fts` / `paper_chunks` / paper metadata。
+  - 返回 evidence chunks、section/page/chunk id 和邻近 chunk 摘要。
+  - 不调用 searcher，不调用 embedding provider，不生成复杂答案。
+
 ## RAG
 
-RAG 从本地 storage 读取 paper/chunk/normalized document/index 数据，不调用 search。Phase 1 先做 FTS-only retrieval 和 EvidencePack；Phase 2 再做 `rag_embed_chunks`、vector index；之后做 hybrid retrieval 和基于证据的回答/分析。PDF -> TEI -> chunks / FTS 属于 storage。RAG 只解析 embedding provider / retrieval / rerank / LLM answer 等运行期结果，不解析 PDF/GROBID 文档结构。若本地证据不足，RAG 返回 search expansion hints，由 workflow 显式调用 search。
+RAG 从本地 storage 读取 paper/chunk/normalized document/index 数据，不调用 search。当前已实现 Phase 1 的 FTS-only retrieval 和 EvidencePack：`RagService.retrieve_local(...)` 从 `paper_chunks_fts` 返回 `RetrievedChunk[]`，`RagService.build_evidence_pack(...)` 补齐 citation metadata 和 neighbor chunks。Phase 2 再做 `rag_embed_chunks`、vector index；之后做 hybrid retrieval 和基于证据的回答/分析。PDF -> TEI -> chunks / FTS 属于 storage。RAG 只解析 embedding provider / retrieval / rerank / LLM answer 等运行期结果，不解析 PDF/GROBID 文档结构。若本地证据不足，RAG 返回 search expansion hints，由 workflow 显式调用 search。
 
 See:
 

@@ -51,3 +51,23 @@ class PaperRecordDraft:
     score: float = 0.0
     score_reason: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ChunkRecord:
+    """Storage-facing chunk record used by local RAG retrieval."""
+
+    chunk_id: str
+    paper_id: str
+    title: str
+    chunk_index: int
+    text: str
+    section_title: str | None = None
+    section_path: str | None = None
+    page_start: int | None = None
+    page_end: int | None = None
+    chunk_type: str = "paragraph"
+    token_count: int | None = None
+    score: float = 0.0
+    rank: int | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)

@@ -4,6 +4,9 @@ from astrbot.api.star import Context, Star
 import astrbot.api.message_components as Comp
 
 from .paperos.config import load_config
+from .paperos.rag.models import RagFilters
+from .paperos.rag.presenter import RagPresenter
+from .paperos.rag.service import RagService
 from .paperos.search.models import PaperSearchResult
 from .paperos.search.presenter import PaperSearchPresenter
 from .paperos.search.service import PaperSearchService
@@ -38,6 +41,7 @@ class PaperOSPlugin(Star):
             astrbot_context=context,
         )
         self.presenter = PaperSearchPresenter(self.cfg)
+        self.rag_presenter = RagPresenter()
         self.storage_presenter = StoragePresenter()
         self.storage: PaperOSStorageContext | None = None
         logger.info("[PaperOS] plugin initialized")
@@ -90,6 +94,26 @@ class PaperOSPlugin(Star):
     async def show_config(self, event: AstrMessageEvent):
         """显示 PaperOS 当前关键配置。"""
         yield event.plain_result(self.presenter.format_config())
+
+    @paperos.command("rag")
+    async def rag_local(self, event: AstrMessageEvent):
+        """从本地 chunks 做 FTS-only RAG evidence 检索。"""
+        query_text = self._extract_after_command(
+            event.message_str.strip(),
+            command_candidates=["/paperos rag", "paperos rag"],
+        )
+        if not query_text:
+            yield event.plain_result("用法：/paperos rag attention mechanism")
+            return
+
+        storage = await self._ensure_storage_context()
+        if storage is None:
+            yield event.plain_result("PaperOS RAG\n- WARN storage config disabled")
+            return
+
+        rag = RagService(repository=storage.repository)
+        pack = await rag.retrieve_evidence(query_text, filters=RagFilters(limit=8))
+        yield event.plain_result(self.rag_presenter.format_evidence_pack(pack))
 
     @paperos_storage.command("status")
     async def storage_status(self, event: AstrMessageEvent):

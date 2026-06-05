@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta, timezone
@@ -9,7 +10,7 @@ from typing import Any, Iterable
 
 from ..config import StorageConfig
 from ..ids import new_id
-from ..models import FulltextLocationRecord, PaperRecordDraft
+from ..models import ChunkRecord, FulltextLocationRecord, PaperRecordDraft
 from ..objects import StoredObject
 from ..text import normalize_identifier, normalize_text
 from ..document.grobid_models import NormalizedDocument
@@ -816,6 +817,123 @@ class SQLitePaperRepository:
                     (chunk_id, paper_id, title, section_title, text),
                 )
 
+    async def search_chunks_fts(
+        self,
+        query: str,
+        *,
+        paper_id: str | None = None,
+        limit: int = 20,
+    ) -> list[ChunkRecord]:
+        match_query = self._fts_match_query(query)
+        if not match_query:
+            return []
+        limit = max(1, min(int(limit), 100))
+        rows = self._conn.execute(
+            """
+            SELECT
+                c.*,
+                p.canonical_title AS paper_title,
+                bm25(paper_chunks_fts) AS fts_rank
+            FROM paper_chunks_fts
+            JOIN paper_chunks c ON c.id = paper_chunks_fts.chunk_id
+            JOIN papers p ON p.id = c.paper_id
+            WHERE paper_chunks_fts MATCH ?
+              AND (? IS NULL OR c.paper_id = ?)
+            ORDER BY bm25(paper_chunks_fts), c.paper_id, c.chunk_index
+            LIMIT ?
+            """,
+            (match_query, paper_id, paper_id, limit),
+        ).fetchall()
+        return [
+            self._chunk_row_to_record(row, rank=idx + 1, score=self._fts_score(row["fts_rank"]))
+            for idx, row in enumerate(rows)
+        ]
+
+    async def get_chunks_by_ids(self, ids: list[str]) -> list[ChunkRecord]:
+        ids = [str(item) for item in ids if str(item)]
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        rows = self._conn.execute(
+            f"""
+            SELECT c.*, p.canonical_title AS paper_title
+            FROM paper_chunks c
+            JOIN papers p ON p.id = c.paper_id
+            WHERE c.id IN ({placeholders})
+            """,
+            tuple(ids),
+        ).fetchall()
+        by_id = {str(row["id"]): self._chunk_row_to_record(row) for row in rows}
+        return [by_id[item] for item in ids if item in by_id]
+
+    async def get_neighbor_chunks(
+        self,
+        chunk_id: str,
+        *,
+        before: int = 1,
+        after: int = 1,
+    ) -> list[ChunkRecord]:
+        row = self._conn.execute(
+            """
+            SELECT paper_id, version_id, chunk_index
+            FROM paper_chunks
+            WHERE id = ?
+            """,
+            (chunk_id,),
+        ).fetchone()
+        if not row:
+            return []
+        before = max(0, min(int(before), 10))
+        after = max(0, min(int(after), 10))
+        start = int(row["chunk_index"]) - before
+        end = int(row["chunk_index"]) + after
+        rows = self._conn.execute(
+            """
+            SELECT c.*, p.canonical_title AS paper_title
+            FROM paper_chunks c
+            JOIN papers p ON p.id = c.paper_id
+            WHERE c.paper_id = ?
+              AND (
+                (? IS NULL AND c.version_id IS NULL)
+                OR c.version_id = ?
+              )
+              AND c.chunk_index BETWEEN ? AND ?
+            ORDER BY c.chunk_index
+            """,
+            (row["paper_id"], row["version_id"], row["version_id"], start, end),
+        ).fetchall()
+        return [self._chunk_row_to_record(item) for item in rows]
+
+    async def get_paper_citation_metadata(self, paper_id: str) -> dict[str, Any]:
+        paper = self._conn.execute(
+            """
+            SELECT id, canonical_title, year, venue, publisher, current_version_id
+            FROM papers
+            WHERE id = ?
+            """,
+            (paper_id,),
+        ).fetchone()
+        if not paper:
+            return {}
+        identifiers = self._conn.execute(
+            """
+            SELECT scheme, value
+            FROM paper_identifiers
+            WHERE paper_id = ?
+            ORDER BY scheme, value
+            """,
+            (paper_id,),
+        ).fetchall()
+        return {
+            "paper_id": str(paper["id"]),
+            "title": str(paper["canonical_title"]),
+            "year": paper["year"],
+            "venue": paper["venue"],
+            "publisher": paper["publisher"],
+            "current_version_id": paper["current_version_id"],
+            "identifiers": {str(row["scheme"]): str(row["value"]) for row in identifiers},
+        }
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -834,6 +952,51 @@ class SQLitePaperRepository:
             if norm:
                 out.append((scheme, norm))
         return out
+
+    def _fts_match_query(self, query: str) -> str:
+        tokens = re.findall(r"[\w]+", query or "", flags=re.UNICODE)
+        tokens = [token for token in tokens if token.strip()]
+        if not tokens:
+            return ""
+        return " OR ".join(f'"{token.replace(chr(34), chr(34) + chr(34))}"' for token in tokens[:12])
+
+    def _fts_score(self, rank_value: object) -> float:
+        try:
+            rank = float(rank_value)
+        except (TypeError, ValueError):
+            return 0.0
+        # FTS5 bm25 is lower-is-better and commonly negative. Convert it into a
+        # positive sorting hint without pretending it is a calibrated relevance.
+        return -rank
+
+    def _chunk_row_to_record(
+        self,
+        row: sqlite3.Row,
+        *,
+        rank: int | None = None,
+        score: float = 0.0,
+    ) -> ChunkRecord:
+        metadata: dict[str, Any]
+        try:
+            metadata = json.loads(row["metadata_json"] or "{}")
+        except Exception:
+            metadata = {}
+        return ChunkRecord(
+            chunk_id=str(row["id"]),
+            paper_id=str(row["paper_id"]),
+            title=str(row["paper_title"]),
+            chunk_index=int(row["chunk_index"]),
+            text=str(row["text"]),
+            section_title=row["section_title"],
+            section_path=row["section_path"],
+            page_start=row["page_start"],
+            page_end=row["page_end"],
+            chunk_type=str(row["chunk_type"] or "paragraph"),
+            token_count=row["token_count"],
+            score=score,
+            rank=rank,
+            metadata=metadata,
+        )
 
     def _upsert_identifier(self, paper_id: str, scheme: str, value: str, source: str | None, now: str) -> None:
         self._conn.execute(

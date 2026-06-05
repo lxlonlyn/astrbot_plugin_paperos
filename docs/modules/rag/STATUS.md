@@ -2,7 +2,15 @@
 
 ## 当前状态
 
-尚未作为稳定模块实现。当前代码只有 `paperos/rag/README.md` 和 `__init__.py`。
+已实现 Phase 1 的最小 FTS-only RAG。当前代码包含：
+
+- `paperos/rag/models.py`
+- `paperos/rag/retrieval.py`
+- `paperos/rag/context/evidence.py`
+- `paperos/rag/service.py`
+- `paperos/rag/presenter.py`
+
+`/paperos rag <query>` 会读取 storage 已生成的 `paper_chunks_fts`，返回 evidence chunks。它不生成复杂答案，不调用 searcher，不调用 embedding provider。
 
 当前 docs 固定边界：RAG 不拥有 PDF parser、GROBID、chunker 或 PDF -> text。Storage 负责 document processing 和 chunks；RAG 负责 FTS/vector retrieval、embedding/vector index、EvidencePack、answer generation 和 search expansion hints。
 
@@ -10,7 +18,7 @@
 
 ## Phase 1: FTS-only RAG
 
-先实现 FTS-only，不上 embedding/vector。
+当前已实现基础 FTS-only，不上 embedding/vector。
 
 原因：
 
@@ -21,11 +29,15 @@
 
 目标：
 
-- `RagService.retrieve_local(query, filters=None)`。
-- `repository.search_chunks_fts(query, paper_id=None, limit=20)`。
-- `EvidenceBuilder`。
-- `AnswerBuilder`。
-- local evidence-only answer。
+- `RagService.retrieve_local(query, filters=None)`：已实现。
+- `RagService.build_evidence_pack(query, chunks)`：已实现。
+- `RagService.retrieve_evidence(query, filters=None)`：已实现。
+- `repository.search_chunks_fts(query, paper_id=None, limit=20)`：已实现。
+- `repository.get_chunks_by_ids(ids)`：已实现。
+- `repository.get_neighbor_chunks(chunk_id, before=1, after=1)`：已实现。
+- `EvidenceBuilder`：已实现。
+- `/paperos rag <query>` evidence-only output：已实现。
+- `AnswerBuilder` / LLM answer：未实现，后续在 retrieval 稳定后再做。
 
 ## Phase 2: Embedding + Vector Index
 

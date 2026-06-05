@@ -10,6 +10,17 @@ Storage 已拥有 PDF document processing：PDF -> TEI -> normalized document ->
 
 RAG 中的“解析”只指 provider/result parsing：解析 embedding provider response、vector-search result、rerank result、LLM answer JSON 或 search expansion hints。RAG 不解析 PDF、GROBID TEI，不生成 storage chunks。
 
+## 当前已实现
+
+Phase 1 最小实现已经可用：
+
+- `RagService.retrieve_local(query, filters=None)`：从 storage FTS 读取 chunk 命中。
+- `RagService.build_evidence_pack(query, chunks)`：补齐 paper metadata、section/page 和 neighbor chunks。
+- `RagService.retrieve_evidence(query, filters=None)`：组合 retrieval 和 evidence builder。
+- `/paperos rag <query>`：返回 evidence chunks，不生成复杂答案。
+
+当前实现不调用 embedding provider，不写 vector index，不调用 searcher，不调用 LLM。
+
 RAG 负责：
 
 - 从 storage 读取 `paper_chunks`、paper metadata、normalized document、index status。
@@ -88,8 +99,9 @@ Phase 1: FTS-only RAG.
 - 调用 storage repository 的 `search_chunks_fts(...)`。
 - 返回 `RetrievedChunk[]`。
 - `EvidenceBuilder` 根据 chunk ids 拉取 paper title、section、page、text。
-- `AnswerBuilder` 用 LLM 只基于 EvidencePack 回答。
+- `/paperos rag <query>` 返回 evidence chunks。
 - 不依赖 embedding API，不写 vector index。
+- `AnswerBuilder` / LLM answer 留到后续 evidence-based generation。
 
 Phase 2: embedding + vector index.
 
@@ -132,3 +144,5 @@ RAG Phase 1 需要 storage repository 提供：
 - `get_paper_citation_metadata(paper_id)`
 
 这些方法只读 storage 已持久化数据，不触发 search，不调用 embedding provider。
+
+当前 SQLite repository 已暴露这些 Phase 1 只读方法。
