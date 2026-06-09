@@ -228,7 +228,7 @@
       "embedding_batch_size": {
         "type": "int",
         "description": "一次调用 embedding provider 的文本数量",
-        "default": 16
+        "default": 8
       }
     }
   },

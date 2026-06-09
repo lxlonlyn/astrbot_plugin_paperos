@@ -119,12 +119,7 @@ class PaperOSPlugin(Star):
             yield event.plain_result("PaperOS RAG\n- WARN storage config disabled")
             return
 
-        rag = RagService(
-            repository=storage.repository,
-            vector_index=storage.vector_index,
-            context=self.astrbot_context,
-            cfg=self.cfg.rag,
-        )
+        rag = self._build_rag_service(storage)
         pack = await rag.retrieve_evidence(query_text, filters=RagFilters(limit=8))
         yield event.plain_result(self.rag_presenter.format_evidence_pack(pack))
 
@@ -136,7 +131,7 @@ class PaperOSPlugin(Star):
             yield event.plain_result("PaperOS Storage Status\n- WARN enabled: storage config disabled")
             return
 
-        diagnostics = StorageDiagnostics(storage)
+        diagnostics = self._build_storage_diagnostics(storage)
         status = diagnostics.status(enabled=self.cfg.storage.enabled)
         yield event.plain_result(self.storage_presenter.format_status(status))
 
@@ -156,7 +151,7 @@ class PaperOSPlugin(Star):
             yield event.plain_result("PaperOS Storage Info\n- WARN enabled: storage config disabled")
             return
 
-        diagnostics = StorageDiagnostics(storage)
+        diagnostics = self._build_storage_diagnostics(storage)
         info = diagnostics.paper_info(query_text)
         yield event.plain_result(self.storage_presenter.format_info(info))
 
@@ -182,31 +177,12 @@ class PaperOSPlugin(Star):
         return None
 
     async def _discover(self, query_text: str, *, event: AstrMessageEvent):
-        search_storage = None
-        rag_index_service = None
-        storage = await self._ensure_storage_context()
-        if storage is not None:
-            search_storage = SearchStorageImportWorkflow(
-                repository=storage.repository,
-                object_store=storage.object_store,
-                storage_cfg=storage.cfg,
-            )
-            rag_index_service = RagIndexService(
-                repository=storage.repository,
-                vector_index=storage.vector_index,
-                context=self.astrbot_context,
-                cfg=self.cfg.rag,
-            )
-        workflow = PaperDiscoveryWorkflow(
-            search_service=self.search_service,
-            search_storage=search_storage,
-            rag_index_service=rag_index_service,
-        )
+        workflow, auto_import = await self._build_discovery_workflow()
         discovery = await workflow.discover_and_index(
             query_text,
             event=event,
             need_fulltext=True,
-            auto_import=search_storage is not None,
+            auto_import=auto_import,
             selection="selected",
             process_document=True,
             cleanup_temporary_pdf=False,
@@ -219,6 +195,49 @@ class PaperOSPlugin(Star):
                 discovery.import_error,
             )
         return discovery
+
+    async def _build_discovery_workflow(self) -> tuple[PaperDiscoveryWorkflow, bool]:
+        storage = await self._ensure_storage_context()
+        if storage is None:
+            return PaperDiscoveryWorkflow(search_service=self.search_service), False
+
+        return (
+            PaperDiscoveryWorkflow(
+                search_service=self.search_service,
+                search_storage=self._build_search_storage_workflow(storage),
+                rag_index_service=self._build_rag_index_service(storage),
+            ),
+            True,
+        )
+
+    def _build_search_storage_workflow(
+        self,
+        storage: PaperOSStorageContext,
+    ) -> SearchStorageImportWorkflow:
+        return SearchStorageImportWorkflow(
+            repository=storage.repository,
+            object_store=storage.object_store,
+            storage_cfg=storage.cfg,
+        )
+
+    def _build_rag_index_service(self, storage: PaperOSStorageContext) -> RagIndexService:
+        return RagIndexService(
+            repository=storage.repository,
+            vector_index=storage.vector_index,
+            context=self.astrbot_context,
+            cfg=self.cfg.rag,
+        )
+
+    def _build_rag_service(self, storage: PaperOSStorageContext) -> RagService:
+        return RagService(
+            repository=storage.repository,
+            vector_index=storage.vector_index,
+            context=self.astrbot_context,
+            cfg=self.cfg.rag,
+        )
+
+    def _build_storage_diagnostics(self, storage: PaperOSStorageContext) -> StorageDiagnostics:
+        return StorageDiagnostics(storage)
 
     def _first_imported_pdf_path(self, summary: SearchStorageImportSummary | None) -> str | None:
         if summary is None:
