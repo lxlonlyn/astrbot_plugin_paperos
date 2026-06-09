@@ -40,7 +40,7 @@ Phase 2 基础 indexing service 已经可用，并已接入 `/paperos search` co
 - RAG 正文、metadata、citation 仍必须从 storage 读取；vector index 不是 source of truth。
 - `/paperos search` command 中，`PaperDiscoveryWorkflow` 会在 storage document processing 返回 `parser_run_id` 后调用 `RagIndexService.index_parser_run(...)`，并负责把对应 `rag_embed_chunks` job 标记 done/failed。
 
-当前 `/paperos rag <query>` 不调用 searcher，不调用 LLM。若 AstrBot runtime 注入了 storage vector index 和 embedding context，它会尝试 hybrid evidence retrieval；否则保持 FTS-only。
+当前 `/paperos rag <query>` 不调用 searcher，不调用 LLM。若在 AstrBot 中运行时注入了 storage vector index 和 embedding context，它会尝试 hybrid evidence retrieval；否则保持 FTS-only。
 
 RAG 负责：
 

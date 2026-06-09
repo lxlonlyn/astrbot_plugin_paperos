@@ -1,6 +1,6 @@
 # Discovery Pipeline
 
-`PaperDiscoveryWorkflow` 是用户级论文发现 pipeline。它属于 `paperos/workflows/`，不属于 searcher。
+`PaperDiscoveryWorkflow` 是用户级论文发现 pipeline。它属于 `paperos/workflows/`，不属于 searcher，也不是新的核心模块。核心模块保持为 `search`、`storage`、`rag`。
 
 ## Goal
 

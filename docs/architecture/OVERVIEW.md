@@ -20,7 +20,7 @@ rag: embed, vector index, retrieve, analyze
 - `storage`: 本地事实源和文档数据处理层。它保存和返回持久化数据，也负责已归档 PDF 的本地 GROBID/parser 处理、TEI/normalized document、chunks 和 FTS；不做联网论文搜索，不调用 LLM 或 embedding provider。
 - `rag`: 本地检索、向量索引和分析层。它从 storage 产出的 chunks / normalized document 开始，调用外部 embedding provider、维护 vector index，并基于本地库回答或生成分析。
 
-`reasoning` 可以作为未来的应用层术语存在，但不应成为搜索、存储、文章数据处理链路中的第四个必读模块。idea generation、claim extraction、related work 草稿等能力优先放在 RAG workflow 文档下。
+复杂分析、idea generation、claim extraction、related work 草稿等能力不再作为独立 `reasoning` 模块维护。它们应作为 `rag` 能力或 workflow/pipeline 步骤出现。
 
 ## First stable loop
 
@@ -55,5 +55,6 @@ PDF / metadata
 2. `storage` 是 source of truth；SQLite、对象文件、chunks、index status 都通过 storage 读写。
 3. PDF -> TEI -> normalized document -> chunks/FTS 属于 `storage` 的本地文档处理流程。
 4. embedding provider 和 vector retrieval 属于 `rag`，不属于 storage。
-5. `sha256` 是对象完整性和文件级去重字段，不是 paper id。
-6. 新文档应优先说明模块黑盒入口、职责和禁止事项，再链接具体实现文件。
+5. 跨模块复杂操作放在 `paperos.workflows` pipeline 层；不要新增 `runtime`、`reasoning`、`ingest` 之类顶层模块。
+6. `sha256` 是对象完整性和文件级去重字段，不是 paper id。
+7. 新文档应优先说明模块黑盒入口、职责和禁止事项，再链接具体实现文件。

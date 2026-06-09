@@ -12,7 +12,7 @@
 - `paperos/rag/service.py`
 - `paperos/rag/presenter.py`
 
-`/paperos rag <query>` 会读取 storage 已生成的 chunks，返回 evidence chunks。在 AstrBot runtime 中注入 `vector_index + context` 时会优先尝试 hybrid retrieval；embedding provider、query embedding 或 vector index 不可用时 fallback 到 FTS-only。它不生成复杂答案，不调用 searcher。
+`/paperos rag <query>` 会读取 storage 已生成的 chunks，返回 evidence chunks。在 AstrBot 中运行且注入 `vector_index + context` 时会优先尝试 hybrid retrieval；embedding provider、query embedding 或 vector index 不可用时 fallback 到 FTS-only。它不生成复杂答案，不调用 searcher。
 
 已新增 Phase 2 的基础索引服务，并已接入 `/paperos search` command 的后处理；独立后台 job runner 尚未实现：
 

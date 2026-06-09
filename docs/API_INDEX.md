@@ -1,5 +1,7 @@
 # PaperOS API Index
 
+PaperOS 的稳定核心模块只有 `search`、`storage`、`rag`。复杂用户操作由 `paperos.workflows` 组合这些核心模块；`workflows` 是 pipeline/orchestration 层，不是第四个核心模块。
+
 ## Search
 
 - `paperos.search.service.PaperSearchService.search(raw_query, event=None, need_fulltext=True, context=None)`

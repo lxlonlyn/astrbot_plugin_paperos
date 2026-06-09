@@ -17,13 +17,11 @@ PaperOS 的论文数据链路只保留三个核心模块：
 
 RAG 可以解析 embedding provider 的返回结果，但不能解析 PDF、GROBID TEI 或生成 chunks。
 
-`reasoning` 不是论文数据链路的核心模块。idea generation、claim 整理、related work 草稿等能力应优先作为 `rag` 的上层应用或 workflow，而不是新的底层数据模块。
-
-`ingest` 也不是顶层模块。搜索结果入库、PDF 归档、解析/索引任务推进应作为 command/facade/workflow 组合 `search -> storage -> rag`。
+不要新增或恢复 `runtime`、`reasoning`、`ingest` 顶层模块。搜索结果入库、PDF 归档、解析/索引任务推进、idea generation、claim 整理、related work 草稿等复杂操作，应作为 command/facade/workflow pipeline 组合 `search -> storage -> rag`。
 
 `workflows` 不是第四个核心模块，而是跨模块 orchestration 层。核心模块不得反向 import workflow。
 
-`paperos.app.PaperOSApp` 是应用门面 / runtime facade：它持有 service、workflow、presenter 和 storage context，供 AstrBot adapter 调用。它也不是核心数据模块。
+`paperos.app.PaperOSApp` 是应用门面 / adapter facade：它持有 service、workflow、presenter 和 storage context，供 AstrBot adapter 调用。它不是 `runtime` 模块，也不是核心数据模块。
 
 ## Dependency direction
 

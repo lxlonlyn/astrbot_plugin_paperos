@@ -4,7 +4,7 @@
 
 ## 当前任务边界
 
-`paperos/workflows/` 是跨模块 orchestration 层，不是新的核心数据模块。
+`paperos/workflows/` 是跨模块 pipeline/orchestration 层，不是新的核心数据模块。PaperOS 稳定核心模块只有 `search`、`storage`、`rag`；不要为复杂操作新增或恢复 `runtime`、`reasoning`、`ingest` 顶层模块。
 
 Workflow 可以组合：
 

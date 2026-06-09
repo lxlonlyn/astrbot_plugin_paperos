@@ -29,7 +29,7 @@ class PaperOSCommandResponse:
 
 
 class PaperOSApp:
-    """Application facade for PaperOS runtime operations.
+    """Application facade for PaperOS command/tool operations.
 
     This class owns service/workflow/presenter assembly. AstrBot-specific
     command registration and result conversion stay in `main.py`.
