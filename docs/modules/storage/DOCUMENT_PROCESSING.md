@@ -22,6 +22,15 @@ GROBID `processFulltextDocument` returns TEI XML for a full scientific document.
 
 The GROBID REST endpoint is configured by `storage.grobid_base_url`; the default is `http://localhost:8070`. `storage.grobid_timeout_seconds` controls the request timeout. If the service cannot be reached, storage document processing should fail with a clear message asking the user to check the configured URL and whether GROBID is running.
 
+PaperOS calls `processFulltextDocument` with structured-output options enabled:
+
+- `generateIDs=1`
+- `segmentSentences=1`
+- `includeRawCitations=1`
+- `teiCoordinates=p/head/figure/formula/biblStruct`
+
+These options improve TEI block traceability, sentence-aware splitting, raw citation preservation, and future page/coordinate-aware retrieval.
+
 ## Normalized Document
 
 The normalized document is PaperOS-owned JSON derived from parser output. It should preserve enough structure for chunking and retrieval while hiding parser-specific TEI details from RAG.

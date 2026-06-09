@@ -5,7 +5,7 @@ import asyncio
 import httpx
 
 from paperos.storage.config import StorageConfig, load_storage_config
-from paperos.storage.document.grobid_client import GrobidClient, GrobidServiceError
+from paperos.storage.document.grobid_client import DEFAULT_FULLTEXT_OPTIONS, GrobidClient, GrobidServiceError
 from paperos.storage.document.processor import DocumentProcessor
 
 
@@ -62,5 +62,36 @@ def test_grobid_client_reports_connection_error(tmp_path):
                 raise AssertionError("expected GrobidServiceError")
         finally:
             await client.aclose()
+
+    asyncio.run(run())
+
+
+def test_grobid_client_sends_fulltext_processing_options(tmp_path):
+    async def run():
+        pdf_path = tmp_path / "paper.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4\n")
+        seen_body = ""
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal seen_body
+            seen_body = (await request.aread()).decode("latin-1")
+            return httpx.Response(200, text="<TEI/>")
+
+        client = GrobidClient(
+            base_url="http://grobid.test:8070",
+            transport=httpx.MockTransport(handler),
+        )
+        try:
+            tei = await client.process_fulltext_document(pdf_path)
+        finally:
+            await client.aclose()
+
+        assert tei == "<TEI/>"
+        for key, value in DEFAULT_FULLTEXT_OPTIONS:
+            assert f'name="{key}"' in seen_body
+            assert value in seen_body
+        assert seen_body.count('name="teiCoordinates"') == 5
+        assert 'filename="paper.pdf"' in seen_body
+        assert "application/pdf" in seen_body
 
     asyncio.run(run())

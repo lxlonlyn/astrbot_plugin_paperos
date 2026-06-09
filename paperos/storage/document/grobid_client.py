@@ -4,6 +4,23 @@ from pathlib import Path
 
 import httpx
 
+DEFAULT_FULLTEXT_OPTIONS = [
+    ("generateIDs", "1"),
+    ("segmentSentences", "1"),
+    ("includeRawCitations", "1"),
+    ("teiCoordinates", "p"),
+    ("teiCoordinates", "head"),
+    ("teiCoordinates", "figure"),
+    ("teiCoordinates", "formula"),
+    ("teiCoordinates", "biblStruct"),
+]
+DEFAULT_FULLTEXT_FORM_DATA = {
+    "generateIDs": "1",
+    "segmentSentences": "1",
+    "includeRawCitations": "1",
+    "teiCoordinates": ["p", "head", "figure", "formula", "biblStruct"],
+}
+
 
 class GrobidServiceError(RuntimeError):
     pass
@@ -25,11 +42,13 @@ class GrobidClient:
     async def process_fulltext_document(self, pdf_path: Path) -> str:
         endpoint = f"{self.base_url}/api/processFulltextDocument"
         try:
-            with Path(pdf_path).open("rb") as pdf:
-                response = await self._client.post(
-                    endpoint,
-                    files={"input": (Path(pdf_path).name, pdf, "application/pdf")},
-                )
+            path = Path(pdf_path)
+            pdf_bytes = path.read_bytes()
+            response = await self._client.post(
+                endpoint,
+                files={"input": (path.name, pdf_bytes, "application/pdf")},
+                data=DEFAULT_FULLTEXT_FORM_DATA,
+            )
             response.raise_for_status()
         except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
             raise GrobidServiceError(
