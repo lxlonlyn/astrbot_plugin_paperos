@@ -2,21 +2,9 @@ from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 import astrbot.api.message_components as Comp
-from pathlib import Path
 
+from .paperos.app import PaperOSApp, PaperOSCommandResponse
 from .paperos.config import load_config
-from .paperos.rag.indexing import RagIndexService
-from .paperos.rag.models import RagFilters
-from .paperos.rag.presenter import RagPresenter
-from .paperos.rag.service import RagService
-from .paperos.search.models import PaperSearchResult
-from .paperos.search.presenter import PaperSearchPresenter
-from .paperos.search.service import PaperSearchService
-from .paperos.storage.diagnostics import StorageDiagnostics
-from .paperos.storage.factory import PaperOSStorageContext, create_storage_context
-from .paperos.storage.presenter import StoragePresenter
-from .paperos.workflows.paper_discovery import PaperDiscoveryWorkflow
-from .paperos.workflows.search_storage import SearchStorageImportSummary, SearchStorageImportWorkflow
 
 
 @filter.command_group("paperos")
@@ -36,21 +24,16 @@ class PaperOSPlugin(Star):
 
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
-        self.astrbot_context = context
-        self.raw_config = config
-        self.cfg = load_config(config)
-        self.search_service = PaperSearchService(
-            cfg=self.cfg,
+        self.os = PaperOSApp(
+            cfg=load_config(config),
             astrbot_context=context,
+            plugin_name=getattr(self, "name", "astrbot_plugin_paperos"),
         )
-        self.presenter = PaperSearchPresenter(self.cfg)
-        self.rag_presenter = RagPresenter()
-        self.storage_presenter = StoragePresenter()
-        self.storage: PaperOSStorageContext | None = None
         logger.info("[PaperOS] plugin initialized")
 
     async def initialize(self):
-        await self._ensure_storage_context()
+        self.os.plugin_name = getattr(self, "name", self.os.plugin_name)
+        await self.os.initialize()
 
     @paperos.command("search")
     async def search_paper(self, event: AstrMessageEvent):
@@ -61,47 +44,14 @@ class PaperOSPlugin(Star):
             command_candidates=["/paperos search", "paperos search"],
         )
 
-        if not query_text:
-            yield event.plain_result("用法：/paperos search attention is all you need")
-            return
-
         logger.debug("[PaperOS] command discovery raw=%r query=%r", raw_message, query_text)
-        discovery = await self._discover(query_text, event=event)
-        result = discovery.search_result
-        import_summary = discovery.import_summary
-
-        logger.debug(
-            "[PaperOS] discovery done papers=%d pdfs=%d parse_jobs=%d query=%r",
-            discovery.imported_count,
-            discovery.pdf_count,
-            len(discovery.storage_parse_job_ids),
-            query_text,
-        )
-
-        pdf = self._first_verified_pdf(result)
-        stored_pdf_path = self._first_imported_pdf_path(import_summary)
-        text = self.presenter.format_search_result(result)
-        if import_summary is not None:
-            text += "\n\n" + self.storage_presenter.format_import_summary(import_summary)
-        if discovery.rag_index_attempts:
-            text += "\n\n" + self.storage_presenter.format_rag_index_summary(discovery.rag_index_attempts)
-
-        send_path = self._first_existing_path(
-            stored_pdf_path,
-            pdf.local_path if pdf is not None else None,
-        )
-        if send_path:
-            yield event.chain_result([
-                Comp.Plain(text + "\n\n已取得合格 PDF，尝试发送文件："),
-                Comp.File(file=send_path, name=(pdf.filename if pdf is not None and pdf.filename else "paper.pdf")),
-            ])
-        else:
-            yield event.plain_result(text)
+        response = await self.os.search(query_text, event=event)
+        yield self._to_astrbot_result(event, response)
 
     @paperos.command("config")
     async def show_config(self, event: AstrMessageEvent):
         """显示 PaperOS 当前关键配置。"""
-        yield event.plain_result(self.presenter.format_config())
+        yield event.plain_result(self.os.config_text())
 
     @paperos.command("rag")
     async def rag_local(self, event: AstrMessageEvent):
@@ -110,30 +60,14 @@ class PaperOSPlugin(Star):
             event.message_str.strip(),
             command_candidates=["/paperos rag", "paperos rag"],
         )
-        if not query_text:
-            yield event.plain_result("用法：/paperos rag attention mechanism")
-            return
-
-        storage = await self._ensure_storage_context()
-        if storage is None:
-            yield event.plain_result("PaperOS RAG\n- WARN storage config disabled")
-            return
-
-        rag = self._build_rag_service(storage)
-        pack = await rag.retrieve_evidence(query_text, filters=RagFilters(limit=8))
-        yield event.plain_result(self.rag_presenter.format_evidence_pack(pack))
+        response = await self.os.rag(query_text)
+        yield self._to_astrbot_result(event, response)
 
     @paperos_storage.command("status")
     async def storage_status(self, event: AstrMessageEvent):
         """显示 PaperOS storage 状态与统计。"""
-        storage = await self._ensure_storage_context()
-        if storage is None:
-            yield event.plain_result("PaperOS Storage Status\n- WARN enabled: storage config disabled")
-            return
-
-        diagnostics = self._build_storage_diagnostics(storage)
-        status = diagnostics.status(enabled=self.cfg.storage.enabled)
-        yield event.plain_result(self.storage_presenter.format_status(status))
+        response = await self.os.storage_status()
+        yield self._to_astrbot_result(event, response)
 
     @paperos_storage.command("info")
     async def storage_info(self, event: AstrMessageEvent):
@@ -142,18 +76,8 @@ class PaperOSPlugin(Star):
             event.message_str.strip(),
             command_candidates=["/paperos storage info", "paperos storage info"],
         )
-        if not query_text:
-            yield event.plain_result("用法：/paperos storage info <paper_id|doi|arxiv|title>")
-            return
-
-        storage = await self._ensure_storage_context()
-        if storage is None:
-            yield event.plain_result("PaperOS Storage Info\n- WARN enabled: storage config disabled")
-            return
-
-        diagnostics = self._build_storage_diagnostics(storage)
-        info = diagnostics.paper_info(query_text)
-        yield event.plain_result(self.storage_presenter.format_info(info))
+        response = await self.os.storage_info(query_text)
+        yield self._to_astrbot_result(event, response)
 
     @filter.llm_tool(name="paperos_search_paper")
     async def paperos_search_paper_tool(self, event: AstrMessageEvent, query: str) -> str:
@@ -162,100 +86,7 @@ class PaperOSPlugin(Star):
         Args:
             query(string): 论文链接、DOI、arXiv ID、准确标题、模糊标题或研究话题。
         """
-        result = await self.search_service.search(
-            raw_query=query,
-            event=event,
-            need_fulltext=True,
-        )
-        return self.presenter.format_search_result(result, compact=True)
-
-    def _first_verified_pdf(self, result: PaperSearchResult):
-        for cand in result.selected or result.candidates:
-            pdf = cand.best_verified_pdf()
-            if pdf is not None:
-                return pdf
-        return None
-
-    async def _discover(self, query_text: str, *, event: AstrMessageEvent):
-        workflow, auto_import = await self._build_discovery_workflow()
-        discovery = await workflow.discover_and_index(
-            query_text,
-            event=event,
-            need_fulltext=True,
-            auto_import=auto_import,
-            selection="selected",
-            process_document=True,
-            cleanup_temporary_pdf=False,
-            ignore_import_errors=True,
-        )
-        if discovery.import_error:
-            logger.warning(
-                "[PaperOS] discovery storage import failed query=%r: %s",
-                query_text,
-                discovery.import_error,
-            )
-        return discovery
-
-    async def _build_discovery_workflow(self) -> tuple[PaperDiscoveryWorkflow, bool]:
-        storage = await self._ensure_storage_context()
-        if storage is None:
-            return PaperDiscoveryWorkflow(search_service=self.search_service), False
-
-        return (
-            PaperDiscoveryWorkflow(
-                search_service=self.search_service,
-                search_storage=self._build_search_storage_workflow(storage),
-                rag_index_service=self._build_rag_index_service(storage),
-            ),
-            True,
-        )
-
-    def _build_search_storage_workflow(
-        self,
-        storage: PaperOSStorageContext,
-    ) -> SearchStorageImportWorkflow:
-        return SearchStorageImportWorkflow(
-            repository=storage.repository,
-            object_store=storage.object_store,
-            storage_cfg=storage.cfg,
-        )
-
-    def _build_rag_index_service(self, storage: PaperOSStorageContext) -> RagIndexService:
-        return RagIndexService(
-            repository=storage.repository,
-            vector_index=storage.vector_index,
-            context=self.astrbot_context,
-            cfg=self.cfg.rag,
-        )
-
-    def _build_rag_service(self, storage: PaperOSStorageContext) -> RagService:
-        return RagService(
-            repository=storage.repository,
-            vector_index=storage.vector_index,
-            context=self.astrbot_context,
-            cfg=self.cfg.rag,
-        )
-
-    def _build_storage_diagnostics(self, storage: PaperOSStorageContext) -> StorageDiagnostics:
-        return StorageDiagnostics(storage)
-
-    def _first_imported_pdf_path(self, summary: SearchStorageImportSummary | None) -> str | None:
-        if summary is None:
-            return None
-        for item in summary.results:
-            if item.imported_pdf and item.object_path:
-                return item.object_path
-        return None
-
-    def _first_existing_path(self, *paths: str | None) -> str | None:
-        for path in paths:
-            if not path:
-                continue
-            candidate = Path(path)
-            if candidate.exists():
-                return str(candidate.resolve())
-            logger.warning("[PaperOS] skip missing file path before sending: %s", path)
-        return None
+        return await self.os.search_tool(query, event=event)
 
     def _extract_after_command(self, raw: str, command_candidates: list[str]) -> str:
         raw_l = raw.lower()
@@ -265,16 +96,14 @@ class PaperOSPlugin(Star):
                 return raw[len(cmd):].strip()
         return raw.strip()
 
-    async def _ensure_storage_context(self) -> PaperOSStorageContext | None:
-        if not self.cfg.storage.enabled:
-            return None
-        if self.storage is None:
-            plugin_name = getattr(self, "name", "astrbot_plugin_paperos")
-            self.storage = await create_storage_context(self.cfg, plugin_name=plugin_name)
-        return self.storage
+    def _to_astrbot_result(self, event: AstrMessageEvent, response: PaperOSCommandResponse):
+        if response.file_path:
+            return event.chain_result([
+                Comp.Plain(response.text),
+                Comp.File(file=response.file_path, name=response.file_name or "paper.pdf"),
+            ])
+        return event.plain_result(response.text)
 
     async def terminate(self):
-        if self.storage is not None:
-            await self.storage.aclose()
-        await self.search_service.aclose()
+        await self.os.close()
         logger.info("[PaperOS] plugin terminated")

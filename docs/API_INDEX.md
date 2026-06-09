@@ -35,6 +35,13 @@
 
 ## Workflows
 
+- `paperos.app.PaperOSApp`
+  - 应用门面，供 AstrBot adapter 调用。
+  - 持有 search/storage/rag service、presenter、storage context 和 workflow 组装逻辑。
+  - 对外提供 `search(...)`、`rag(...)`、`storage_status()`、`storage_info(...)`、`config_text()`、`search_tool(...)`、`close()`。
+  - 返回 framework-neutral 的 `PaperOSCommandResponse`，不依赖 AstrBot `Comp.File` / `event.chain_result`。
+  - 不是第四个核心数据模块；核心编排仍在 `paperos.workflows`。
+
 - `paperos.workflows.paper_discovery.PaperDiscoveryWorkflow.discover_and_index(query, need_fulltext=True, auto_import=True, search_context=None)`
   - 用户级 discovery pipeline。
   - 同步执行 search、storage import、storage PDF document processing；当构造时注入 `rag_index_service` 且 import item 带 `parser_run_id` 时，继续执行 RAG embedding/vector indexing。
@@ -46,7 +53,7 @@
 ## AstrBot Commands
 
 - `/paperos search <query>`
-  - 调用 `PaperDiscoveryWorkflow.discover_and_index(...)`。
+  - `main.py` 调用 `PaperOSApp.search(...)`；`PaperOSApp` 内部调用 `PaperDiscoveryWorkflow.discover_and_index(...)`。
   - storage 启用时自动导入同一次搜索结果，归档 verified PDF，同步尝试 storage document processing，并在有 `parser_run_id` 时执行 RAG indexing 后处理。
   - 发送文件时优先使用 storage object 路径。
 

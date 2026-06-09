@@ -23,10 +23,14 @@ RAG 可以解析 embedding provider 的返回结果，但不能解析 PDF、GROB
 
 `workflows` 不是第四个核心模块，而是跨模块 orchestration 层。核心模块不得反向 import workflow。
 
+`paperos.app.PaperOSApp` 是应用门面 / runtime facade：它持有 service、workflow、presenter 和 storage context，供 AstrBot adapter 调用。它也不是核心数据模块。
+
 ## Dependency direction
 
 ```text
-AstrBot command/tool/workflow
+AstrBot command/tool
+  -> paperos.app.PaperOSApp
+  -> workflows
   -> search
   -> storage
   -> rag
@@ -34,7 +38,7 @@ AstrBot command/tool/workflow
 
 Allowed:
 
-- command/facade 调用 `search` 后，把结果转换为 storage DTO 再写入 `storage`。
+- app/workflow facade 调用 `search` 后，把结果转换为 storage DTO 再写入 `storage`。
 - `storage` 可以调用本地 GROBID 服务或本地 parser，把已归档 PDF 转成 TEI、normalized document、chunks 和 FTS。
 - `rag` 从 `storage` 读取 chunks / normalized document，调用 embedding provider，并把 vector/index status 写回 `storage`。
 - `search` 下载并验证临时 PDF，返回可交给 storage 归档的本地路径。
