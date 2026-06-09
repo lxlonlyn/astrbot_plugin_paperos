@@ -58,13 +58,14 @@
 
 - `/paperos rag <query>`
   - 调用 `RagService.retrieve_evidence(...)`。
-  - 只读取 storage 已生成的 `paper_chunks_fts` / `paper_chunks` / paper metadata。
+  - 优先尝试 hybrid retrieval；vector 侧不可用时 fallback 到 FTS-only。
+  - 只读取 storage 已生成的 FTS/vector index/`paper_chunks` / paper metadata。
   - 返回 evidence chunks、section/page/chunk id 和邻近 chunk 摘要。
-  - 不调用 searcher，不调用 embedding provider，不生成复杂答案。
+  - 可调用 AstrBot embedding provider 做 query embedding；不调用 searcher，不生成复杂答案。
 
 ## RAG
 
-RAG 从本地 storage 读取 paper/chunk/normalized document/index 数据，不调用 search。当前已实现 Phase 1 的 FTS-only retrieval 和 EvidencePack：`RagService.retrieve_local(...)` 从 `paper_chunks_fts` 返回 `RetrievedChunk[]`，`RagService.build_evidence_pack(...)` 补齐 citation metadata 和 neighbor chunks。Phase 2 基础 indexing service 已接入 `/paperos search` command 的后处理：`RagIndexService` 通过 storage repository 读取 chunks 和过滤 missing/stale `chunk_embedding_status`，调用 AstrBot embedding provider，然后组织不含正文的 storage `VectorRecord[]`，通过 storage-owned `LocalVectorIndex` 写向量记录，并通过 repository 写 `chunk_embedding_status` 与 paper-level `index_status`；workflow 负责把对应 `rag_embed_chunks` job 标记 done/failed。Vector index 只保存可重建向量记录和 `chunk_id`，真实正文仍从 storage `paper_chunks` 读取。之后做 hybrid retrieval 和基于证据的回答/分析。PDF -> TEI -> chunks / FTS 属于 storage。RAG 只解析 embedding provider / retrieval / rerank / LLM answer 等运行期结果，不解析 PDF/GROBID 文档结构。若本地证据不足，RAG 返回 search expansion hints，由 workflow 显式调用 search。
+RAG 从本地 storage 读取 paper/chunk/normalized document/index 数据，不调用 search。当前已实现 FTS retrieval、vector retrieval baseline、hybrid RRF fusion 和 EvidencePack：`RagService.retrieve_local(...)` 在注入 storage vector index 与 AstrBot context 时优先尝试 hybrid，否则使用 FTS-only；`RagService.build_evidence_pack(...)` 补齐 citation metadata 和 neighbor chunks。Phase 2 基础 indexing service 已接入 `/paperos search` command 的后处理：`RagIndexService` 通过 storage repository 读取 chunks 和过滤 missing/stale `chunk_embedding_status`，调用 AstrBot embedding provider，然后组织不含正文的 storage `VectorRecord[]`，通过 storage-owned `LocalVectorIndex` 写向量记录，并通过 repository 写 `chunk_embedding_status` 与 paper-level `index_status`；workflow 负责把对应 `rag_embed_chunks` job 标记 done/failed。Vector index 只保存可重建向量记录和 `chunk_id`，真实正文仍从 storage `paper_chunks` 读取。之后做基于证据的回答/分析。PDF -> TEI -> chunks / FTS 属于 storage。RAG 只解析 embedding provider / retrieval / rerank / LLM answer 等运行期结果，不解析 PDF/GROBID 文档结构。若本地证据不足，RAG 返回 search expansion hints，由 workflow 显式调用 search。
 
 See:
 

@@ -2,7 +2,8 @@
 
 Local retrieval, evidence-pack construction, embedding/vector indexing, and evidence-based generation.
 
-Current implementation is Phase 1: FTS-only retrieval over storage-owned chunks.
+Current retrieval implementation starts with storage-owned FTS and can use
+storage-owned vector search when AstrBot embedding context is available.
 
 RAG starts from storage-owned document data:
 
@@ -25,7 +26,7 @@ Implemented entry points:
 - `RagIndexService.index_pending_job(job)`
 - `/paperos rag <query>` evidence chunk output
 
-Phase 1 reads `paper_chunks_fts`, `paper_chunks`, neighbor chunks, and paper citation metadata through the storage repository. It does not call an embedding provider, vector index, searcher, or LLM.
+FTS retrieval reads `paper_chunks_fts`, `paper_chunks`, neighbor chunks, and paper citation metadata through the storage repository. Vector retrieval embeds the query with an AstrBot-configured embedding provider, calls storage `vector_index.search(...)`, then resolves returned `chunk_id` values back through the storage repository. If vector retrieval is unavailable or fails, `RagService` falls back to FTS-only evidence retrieval. It does not call searcher or LLM.
 
 Phase 2 indexing resolves AstrBot-configured embedding providers through `context.get_all_embedding_providers()`. PaperOS does not implement Qwen/OpenAI/etc. embedding providers itself; it calls the resolved provider's `get_dim()` and prefers AstrBot `get_embeddings_batch(texts, batch_size=...)`, falling back to batched `get_embeddings(list[str])` only when needed.
 

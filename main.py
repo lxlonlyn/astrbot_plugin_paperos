@@ -119,7 +119,12 @@ class PaperOSPlugin(Star):
             yield event.plain_result("PaperOS RAG\n- WARN storage config disabled")
             return
 
-        rag = RagService(repository=storage.repository)
+        rag = RagService(
+            repository=storage.repository,
+            vector_index=storage.vector_index,
+            context=self.astrbot_context,
+            cfg=self.cfg.rag,
+        )
         pack = await rag.retrieve_evidence(query_text, filters=RagFilters(limit=8))
         yield event.plain_result(self.rag_presenter.format_evidence_pack(pack))
 

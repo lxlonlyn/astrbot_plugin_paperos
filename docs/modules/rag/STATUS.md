@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-已实现 Phase 1 的最小 FTS-only RAG。当前代码包含：
+已实现 Phase 1 的最小 FTS-only RAG，并已加入 vector/hybrid retrieval baseline。当前代码包含：
 
 - `paperos/rag/models.py`
 - `paperos/rag/retrieval.py`
@@ -12,7 +12,7 @@
 - `paperos/rag/service.py`
 - `paperos/rag/presenter.py`
 
-`/paperos rag <query>` 会读取 storage 已生成的 `paper_chunks_fts`，返回 evidence chunks。它不生成复杂答案，不调用 searcher，不调用 embedding provider。
+`/paperos rag <query>` 会读取 storage 已生成的 chunks，返回 evidence chunks。在 AstrBot runtime 中注入 `vector_index + context` 时会优先尝试 hybrid retrieval；embedding provider、query embedding 或 vector index 不可用时 fallback 到 FTS-only。它不生成复杂答案，不调用 searcher。
 
 已新增 Phase 2 的基础索引服务，并已接入 `/paperos search` command 的后处理；独立后台 job runner 尚未实现：
 
@@ -43,6 +43,8 @@
 - `RagService.retrieve_local(query, filters=None)`：已实现。
 - `RagService.build_evidence_pack(query, chunks)`：已实现。
 - `RagService.retrieve_evidence(query, filters=None)`：已实现。
+- `VectorRetriever`：已实现 baseline，负责 query embedding、`storage.vector_index.search(...)`、`repository.get_chunks_by_ids(...)`。
+- `HybridRetriever`：已实现 baseline，负责 FTS/vector RRF fusion。
 - `repository.search_chunks_fts(query, paper_id=None, limit=20)`：已实现。
 - `repository.get_chunks_by_ids(ids)`：已实现。
 - `repository.get_neighbor_chunks(chunk_id, before=1, after=1)`：已实现。
@@ -62,7 +64,7 @@
 - `RagIndexJobRunner`：未实现。
 - claim 任意 pending `rag_embed_chunks` job 的后台 worker：未实现，后续由 workflow/job runner 负责。
 - chunk-level embedding status：已完成，通过 storage repository `upsert_chunk_embedding_status(...)`。
-- `RagVectorService` / `VectorRetriever` / hybrid retrieval：未实现。
+- `RagVectorService`：未实现；当前只有轻量 `VectorRetriever` / `HybridRetriever` baseline。
 
 ## Phase 3: Hybrid Retrieval
 

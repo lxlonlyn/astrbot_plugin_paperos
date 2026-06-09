@@ -19,6 +19,12 @@ Phase 1 最小实现已经可用：
 - `RagService.retrieve_evidence(query, filters=None)`：组合 retrieval 和 evidence builder。
 - `/paperos rag <query>`：返回 evidence chunks，不生成复杂答案。
 
+Vector/hybrid retrieval baseline 已经可用：
+
+- `VectorRetriever`：解析 AstrBot embedding provider，embed query，调用 storage-owned `vector_index.search(...)`，再用 `repository.get_chunks_by_ids(...)` 回 SQLite/storage 补正文和 metadata。
+- `HybridRetriever`：FTS top-k + vector top-k，用 RRF fusion 合并为 `RetrievedChunk[]`。
+- `RagService.retrieve_local(...)` 在注入 `vector_index + context` 时默认尝试 hybrid；embedding provider、query embedding 或 vector index 不可用时 fallback 到 FTS-only。
+
 Phase 2 基础 indexing service 已经可用，并已接入 `/paperos search` command 的后处理；独立后台 job runner 尚未实现：
 
 - `resolve_embedding_provider(context, provider_id="")`：使用 AstrBot context 的 `get_all_embedding_providers()`。
@@ -34,16 +40,17 @@ Phase 2 基础 indexing service 已经可用，并已接入 `/paperos search` co
 - RAG 正文、metadata、citation 仍必须从 storage 读取；vector index 不是 source of truth。
 - `/paperos search` command 中，`PaperDiscoveryWorkflow` 会在 storage document processing 返回 `parser_run_id` 后调用 `RagIndexService.index_parser_run(...)`，并负责把对应 `rag_embed_chunks` job 标记 done/failed。
 
-当前 `/paperos rag <query>` 不调用 embedding provider，不做 vector retrieval，不调用 searcher，不调用 LLM。
+当前 `/paperos rag <query>` 不调用 searcher，不调用 LLM。若 AstrBot runtime 注入了 storage vector index 和 embedding context，它会尝试 hybrid evidence retrieval；否则保持 FTS-only。
 
 RAG 负责：
 
 - 从 storage 读取 `paper_chunks`、paper metadata、normalized document、index status。
 - FTS-only retrieval：先消费 storage 的 `paper_chunks_fts`，验证 chunks 是否可用。
+- Vector retrieval：embed query，调用 storage-owned vector index，只使用返回的 `chunk_id/score`。
 - 调用外部 embedding provider 获取 chunk embedding 和 query embedding。
 - 解析 embedding provider 返回值，并把向量和模型 metadata 转成 RAG index records。
 - 写入 vector index，并通过 storage 更新 index status。
-- 执行 FTS/vector/hybrid retrieval。
+- 执行 FTS/vector/hybrid retrieval，并在 vector 侧不可用时退回 FTS。
 - 做 neighbor expansion、fusion、optional rerank。
 - 构造 EvidencePack，保留 paper、section、page、chunk、citation 信息。
 - 调 LLM 只基于 EvidencePack 生成回答。
@@ -137,8 +144,8 @@ Phase 2: embedding + vector index.
 Phase 3: hybrid retrieval.
 
 - `FTSRetriever`。
-- `VectorRetriever`。
-- `HybridRetriever`。
+- `VectorRetriever`：已实现 baseline。
+- `HybridRetriever`：已实现 baseline。
 - RRF fusion: `score = 1 / (60 + rank_fts) + 1 / (60 + rank_vector)`。
 - neighbor expansion。
 - optional rerank。

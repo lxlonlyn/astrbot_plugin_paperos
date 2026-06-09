@@ -8,6 +8,8 @@ from typing import Any
 class RagFilters:
     paper_id: str | None = None
     limit: int = 8
+    vector_limit: int | None = None
+    fts_limit: int | None = None
     neighbor_before: int = 1
     neighbor_after: int = 1
 
