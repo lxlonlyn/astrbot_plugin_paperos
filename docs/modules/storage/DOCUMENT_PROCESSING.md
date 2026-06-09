@@ -35,6 +35,24 @@ Expected major parts:
 - bibliography references;
 - parser metadata.
 
+## Chunk Policy
+
+`DocumentChunker` does not write one paragraph per chunk. It builds retrieval chunks from normalized document blocks with `section_merge_v1`:
+
+- keep only main text blocks: `paragraph` and `abstract`;
+- keep `list_item` as main text when it carries enough context;
+- drop very short/noisy text such as heading-like fragments;
+- keep `figure_caption`, `table_caption`, and `formula` as structured document blocks/assets, but do not include them in default main-text chunks;
+- merge consecutive paragraphs inside the same section;
+- target about 1800 characters per chunk, with 500 minimum and 2600 maximum by default;
+- split an oversized paragraph by sentence first, then by character window if needed;
+- merge a too-short tail chunk into a neighbor;
+- generate `embedding_text`, `source_block_ids`, `token_count`, `content_hash`, and chunk policy metadata.
+
+This keeps chunks large enough for embedding/retrieval context while preserving section and block provenance.
+
+Figure/table captions and formulas are stored as `extracted_assets` linked back to their caption/formula `document_blocks`. They are useful as asset evidence, but should be retrieved by asset-aware retrieval rather than mixed into ordinary body-text chunks by default.
+
 ## SQL Rows
 
 - `parser_runs`: one row per parse attempt.

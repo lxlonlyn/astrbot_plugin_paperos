@@ -734,6 +734,35 @@ class SQLitePaperRepository:
                         block.content_hash,
                     ),
                 )
+            for asset in document.assets:
+                linked_block_id = (
+                    block_ids.get(asset.linked_block_index)
+                    if asset.linked_block_index is not None
+                    else None
+                )
+                self._conn.execute(
+                    """
+                    INSERT INTO extracted_assets(
+                        id, paper_id, parser_run_id, asset_type, label, caption,
+                        page, coords_json, object_id, text_object_id, linked_block_id,
+                        metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        new_id("asset"),
+                        paper_id,
+                        parser_run_id,
+                        asset.asset_type,
+                        asset.label,
+                        asset.caption,
+                        asset.page,
+                        json.dumps(asset.coords or {}, ensure_ascii=False),
+                        asset.object_id,
+                        asset.text_object_id,
+                        linked_block_id,
+                        json.dumps(asset.metadata or {}, ensure_ascii=False),
+                    ),
+                )
             for ref in document.references:
                 self._conn.execute(
                     """

@@ -40,10 +40,24 @@ class DocumentReference:
 
 
 @dataclass(frozen=True)
+class DocumentAsset:
+    asset_type: str
+    label: str | None = None
+    caption: str | None = None
+    page: int | None = None
+    coords: dict[str, Any] = field(default_factory=dict)
+    object_id: str | None = None
+    text_object_id: str | None = None
+    linked_block_index: int | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class NormalizedDocument:
     title: str | None = None
     abstract: str | None = None
     sections: list[DocumentSection] = field(default_factory=list)
     blocks: list[DocumentBlock] = field(default_factory=list)
+    assets: list[DocumentAsset] = field(default_factory=list)
     references: list[DocumentReference] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)

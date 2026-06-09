@@ -231,16 +231,18 @@ raw TEI XML 和 normalized document JSON 作为 object store 中的长期对象�
 - `title`
 - `abstract`
 - `paragraph`
+- `list_item`
 - `formula`
 - `figure_caption`
 - `table_caption`
-- `list_item`
 - `footnote`
 - `reference_context`
 
 ## extracted_assets
 
-记录图、表、公式等解析资产。资产文件本身仍通过 `objects` 表和 object store 保存。
+记录图、表、公式等解析资产。`figure_caption`、`table_caption`、`formula` 可作为 `document_blocks` 保存，并由 `extracted_assets.linked_block_id` 关联。资产文件本身仍通过 `objects` 表和 object store 保存。
+
+默认正文 chunk 不混入 figure/table caption 或 formula；后续 asset-aware retrieval 可以按查询意图单独打开这些证据。
 
 ## paper_references
 
