@@ -7,18 +7,6 @@ from .paperos.app import PaperOSApp, PaperOSCommandResponse
 from .paperos.config import load_config
 
 
-@filter.command_group("paperos")
-def paperos():
-    """PaperOS 指令组。"""
-    pass
-
-
-@paperos.group("storage")
-def paperos_storage():
-    """PaperOS storage 指令组。"""
-    pass
-
-
 class PaperOSPlugin(Star):
     """AstrBot entrypoint for PaperOS."""
 
@@ -35,6 +23,19 @@ class PaperOSPlugin(Star):
         self.os.plugin_name = getattr(self, "name", self.os.plugin_name)
         await self.os.initialize()
 
+    # ================= PaperOS 指令开始 =================
+    @filter.command_group("paperos")
+    def paperos():
+        """PaperOS 指令组。"""
+        pass
+
+    # ================= config =================
+    @paperos.command("config")
+    async def show_config(self, event: AstrMessageEvent):
+        """显示 PaperOS 当前关键配置。"""
+        yield event.plain_result(self.os.config_text())
+    
+    # ================= search =================
     @paperos.command("search")
     async def search_paper(self, event: AstrMessageEvent):
         """搜索论文并尝试返回合格 PDF。"""
@@ -48,11 +49,7 @@ class PaperOSPlugin(Star):
         response = await self.os.search(query_text, event=event)
         yield self._to_astrbot_result(event, response)
 
-    @paperos.command("config")
-    async def show_config(self, event: AstrMessageEvent):
-        """显示 PaperOS 当前关键配置。"""
-        yield event.plain_result(self.os.config_text())
-
+    # ================= rag =================
     @paperos.command("rag")
     async def rag_local(self, event: AstrMessageEvent):
         """从本地 chunks 做 FTS-only RAG evidence 检索。"""
@@ -62,6 +59,12 @@ class PaperOSPlugin(Star):
         )
         response = await self.os.rag(query_text)
         yield self._to_astrbot_result(event, response)
+
+    # ================= storage =================
+    @paperos.group("storage")
+    def paperos_storage():
+        """PaperOS storage 指令组。"""
+        pass
 
     @paperos_storage.command("status")
     async def storage_status(self, event: AstrMessageEvent):
@@ -78,15 +81,6 @@ class PaperOSPlugin(Star):
         )
         response = await self.os.storage_info(query_text)
         yield self._to_astrbot_result(event, response)
-
-    @filter.llm_tool(name="paperos_search_paper")
-    async def paperos_search_paper_tool(self, event: AstrMessageEvent, query: str) -> str:
-        """搜索学术论文，并返回候选论文列表。
-
-        Args:
-            query(string): 论文链接、DOI、arXiv ID、准确标题、模糊标题或研究话题。
-        """
-        return await self.os.search_tool(query, event=event)
 
     def _extract_after_command(self, raw: str, command_candidates: list[str]) -> str:
         raw_l = raw.lower()
