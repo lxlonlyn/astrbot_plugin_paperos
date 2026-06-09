@@ -32,6 +32,7 @@ class PaperImportResult:
     object_storage_key: str | None = None
     object_path: str | None = None
     job_id: str | None = None
+    rag_job_id: str | None = None
     parser_run_id: str | None = None
     imported_pdf: bool = False
     metadata_only: bool = True
@@ -73,6 +74,7 @@ class PaperStorageImporter:
         object_storage_key: str | None = None
         object_path: str | None = None
         job_id: str | None = None
+        rag_job_id: str | None = None
         parser_run_id: str | None = None
         source_path = verified.local_path if verified and verified.local_path else None
         source_removed = False
@@ -115,6 +117,12 @@ class PaperStorageImporter:
                             parse_job_id=job_id,
                             source_query=request.source_query,
                         )
+                        rag_job_id = await self._enqueue_rag_embed_job(
+                            paper_id=paper_id,
+                            object_id=object_id,
+                            parser_run_id=parser_run_id,
+                            source_query=request.source_query,
+                        )
                         message = "storage_parse_pdf completed"
                     except Exception as exc:
                         message = f"storage_parse_pdf failed: {exc}"
@@ -144,6 +152,7 @@ class PaperStorageImporter:
             object_storage_key=object_storage_key if object_id else None,
             object_path=object_path if object_id else None,
             job_id=job_id,
+            rag_job_id=rag_job_id,
             parser_run_id=parser_run_id,
             imported_pdf=object_id is not None,
             metadata_only=object_id is None,
@@ -197,7 +206,18 @@ class PaperStorageImporter:
             message="processed by configured GROBID service",
         )
         await self.repository.mark_job_done(parse_job_id)
-        await self.repository.enqueue_job(
+        return parser_run_id
+
+    async def _enqueue_rag_embed_job(
+        self,
+        *,
+        paper_id: str,
+        object_id: str,
+        parser_run_id: str,
+        source_query: str | None,
+    ) -> str:
+        version_id = await self.repository.current_version_id(paper_id)
+        return await self.repository.enqueue_job(
             "rag_embed_chunks",
             dedupe_key=f"rag_embed_chunks:{parser_run_id}",
             paper_id=paper_id,
@@ -205,7 +225,6 @@ class PaperStorageImporter:
             object_id=object_id,
             payload={"parser_run_id": parser_run_id, "source_query": source_query},
         )
-        return parser_run_id
 
     def _remove_source_file(self, path: str) -> bool:
         try:

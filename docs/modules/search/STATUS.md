@@ -16,15 +16,15 @@
 - fulltext PDF 下载、落盘与严格验证。
 - presenter 格式化。
 - AstrBot command `/paperos search` 与 LLM tool `paperos_search_paper`。
-- `/paperos search` 在 storage 启用时会把同一次搜索结果交给 `SearchStorageImportWorkflow` 入库，归档 verified PDF 到 object store，排队后续文档处理任务，并改用 storage object 路径发送文件。
+- `/paperos search` 在 storage 启用时会把同一次搜索结果交给 `PaperDiscoveryWorkflow`：先经 `SearchStorageImportWorkflow` 入库，归档 verified PDF 到 object store，同步尝试 storage document processing；若生成 `parser_run_id`，继续触发 RAG embedding/vector indexing 后处理，并改用 storage object 路径发送文件。
 
 ## 未实现
 
 - 多 provider 聚合。
 - PaperOS 自己维护的通用网页搜索后端。
 - CORE/OpenAlex/Semantic Scholar 等学术 API 主链路。
-- storage document processing worker：PDF -> TEI -> normalized document -> chunks / FTS。
-- RAG embedding/vector indexer。
+- 独立后台 storage document processing worker：PDF -> TEI -> normalized document -> chunks / FTS。
+- 独立后台 RAG embedding/vector indexing worker。
 - RAG retrieval。
 
 ## 重要边界
@@ -42,7 +42,10 @@ User query
   -> DomainResolver
   -> FulltextVerifier
   -> PaperSearchResult
+  -> PaperDiscoveryWorkflow
   -> SearchStorageImportWorkflow
+  -> storage document processing
+  -> RagIndexService
 ```
 
 `FulltextStatus.VERIFIED_PDF` 表示候选 URL 已下载到 AstrBot 插件数据目录

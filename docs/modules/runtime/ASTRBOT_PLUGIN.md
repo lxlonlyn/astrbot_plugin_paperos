@@ -7,9 +7,10 @@
 - 读取 AstrBot config。
 - 初始化 PaperOS config。
 - 初始化 search service、storage context 和跨模块 workflow 所需 facade。
+- 在 `/paperos search` command 路径中把 storage repository/vector index 和 AstrBot context 注入 `RagIndexService`。
 - 注册 command。
 - 注册 LLM tool。
-- 调 presenter 输出用户可读结果，包括 search 结果和 storage 入库摘要。
+- 调 presenter 输出用户可读结果，包括 search 结果、storage 入库摘要和 RAG indexing 摘要。
 - 生命周期中关闭 HTTP client 和 storage repository。
 
 ## main.py 不应负责
@@ -17,11 +18,14 @@
 - search pipeline 内部逻辑。
 - storage SQL。
 - PDF 下载细节。
-- RAG 检索细节。
+- PDF/GROBID/chunker 细节。
+- RAG embedding、vector index 或检索细节。
 
 ## 当前结构
 
-`main.py` 负责把 AstrBot command/tool 组合到核心模块上。`/paperos search` 当前通过 `PaperDiscoveryWorkflow.discover_and_index(...)` 执行用户级 pipeline：先调用 search service，再在 storage 启用时通过 `SearchStorageImportWorkflow` 完成 narrow storage import，最后用 presenter 输出搜索结果和入库摘要。
+`main.py` 负责把 AstrBot command/tool 组合到核心模块上。`/paperos search` 当前通过 `PaperDiscoveryWorkflow.discover_and_index(...)` 执行用户级 pipeline：先调用 search service，再在 storage 启用时通过 `SearchStorageImportWorkflow` 完成 narrow storage import 和 storage-owned PDF document processing；如果 import result 带有 `parser_run_id`，workflow 会调用注入的 `RagIndexService.index_parser_run(...)` 完成 embedding/vector indexing 后处理。presenter 输出搜索结果、入库摘要和 indexing 摘要。
+
+`paperos_search_paper` LLM tool 仍只返回搜索结果，不做隐式入库/index，避免模型工具调用产生用户未预期的持久化写入。
 
 当前命令：
 

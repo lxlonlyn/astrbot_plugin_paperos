@@ -27,7 +27,7 @@ Current baseline implementation:
 
 ```text
 rag_embed_chunks job
-  -> workflow claims job
+  -> workflow/job runner receives a concrete parser_run_id
   -> RagIndexService reads storage chunks
   -> repository filters missing/stale chunk_embedding_status
   -> resolve AstrBot embedding provider
@@ -41,7 +41,9 @@ rag_embed_chunks job
   -> workflow marks job done/failed
 ```
 
-`RagIndexService` deliberately does not claim jobs or parse commands. It handles one explicit parser run, paper id, or decoded job payload.
+`/paperos search` command 后处理已经走这条路径：storage import/document processing 返回 `parser_run_id` 和 `rag_job_id` 后，`PaperDiscoveryWorkflow` 调用 `RagIndexService.index_parser_run(parser_run_id)`，再把对应 `rag_embed_chunks` job 标记 done/failed。
+
+`RagIndexService` deliberately does not claim jobs or parse commands. It handles one explicit parser run, paper id, or decoded job payload. 独立后台 worker 未来可以 claim pending `rag_embed_chunks` jobs 后调用 `index_pending_job(job)`。
 
 `RagIndexService` does not instantiate LanceDB and does not accept `vector_index_dir`. It receives storage-owned `LocalVectorIndex` from the caller:
 

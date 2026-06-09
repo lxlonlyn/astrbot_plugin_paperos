@@ -5,6 +5,7 @@ import astrbot.api.message_components as Comp
 from pathlib import Path
 
 from .paperos.config import load_config
+from .paperos.rag.indexing import RagIndexService
 from .paperos.rag.models import RagFilters
 from .paperos.rag.presenter import RagPresenter
 from .paperos.rag.service import RagService
@@ -35,6 +36,7 @@ class PaperOSPlugin(Star):
 
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
+        self.astrbot_context = context
         self.raw_config = config
         self.cfg = load_config(config)
         self.search_service = PaperSearchService(
@@ -81,6 +83,8 @@ class PaperOSPlugin(Star):
         text = self.presenter.format_search_result(result)
         if import_summary is not None:
             text += "\n\n" + self.storage_presenter.format_import_summary(import_summary)
+        if discovery.rag_index_attempts:
+            text += "\n\n" + self.storage_presenter.format_rag_index_summary(discovery.rag_index_attempts)
 
         send_path = self._first_existing_path(
             stored_pdf_path,
@@ -174,6 +178,7 @@ class PaperOSPlugin(Star):
 
     async def _discover(self, query_text: str, *, event: AstrMessageEvent):
         search_storage = None
+        rag_index_service = None
         storage = await self._ensure_storage_context()
         if storage is not None:
             search_storage = SearchStorageImportWorkflow(
@@ -181,9 +186,16 @@ class PaperOSPlugin(Star):
                 object_store=storage.object_store,
                 storage_cfg=storage.cfg,
             )
+            rag_index_service = RagIndexService(
+                repository=storage.repository,
+                vector_index=storage.vector_index,
+                context=self.astrbot_context,
+                cfg=self.cfg.rag,
+            )
         workflow = PaperDiscoveryWorkflow(
             search_service=self.search_service,
             search_storage=search_storage,
+            rag_index_service=rag_index_service,
         )
         discovery = await workflow.discover_and_index(
             query_text,

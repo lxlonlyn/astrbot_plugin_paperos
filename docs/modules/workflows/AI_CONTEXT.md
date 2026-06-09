@@ -33,8 +33,10 @@ Workflow 不拥有：
 
 - `PaperDiscoveryWorkflow`
   - 用户级 pipeline。
-  - 第一阶段同步执行 search 和 storage import。
-  - 后续 storage document processing / RAG embedding 通过 job 状态表达。
+  - 同步执行 search、storage import、storage document processing。
+  - 当 import result 带有 `parser_run_id` 且调用方注入 `rag_index_service` 时，继续调用 `rag_index_service.index_parser_run(...)`。
+  - RAG indexing 成功后标记 `rag_embed_chunks` job done；失败时标记 job failed 和 `index_status=failed`，但不回滚 search/storage。
+  - `/paperos search` command 使用这个 pipeline；`paperos_search_paper` LLM tool 仍只返回 search result，不做隐式入库/index。
 
 ## 依赖方向
 
@@ -51,3 +53,10 @@ search  -X-> workflows
 storage -X-> workflows
 rag     -X-> workflows
 ```
+
+## 禁止误解
+
+- 不要新建 `paperos/index` 模块。
+- 不要新增 `/paperos index` 指令组来表达 search 后处理。
+- 不要把 embedding provider 调用放进 searcher 或 storage。
+- 不要让 `SearchStorageImportWorkflow` 代表完整 pipeline；它只做 search result -> storage import。

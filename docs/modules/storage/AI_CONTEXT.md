@@ -110,5 +110,5 @@ Storage 可以保存 vector/index metadata，但不调用 embedding provider，�
 - paper <-> object link。
 - current version 更新。
 - PDF -> TEI -> normalized document -> chunks / FTS。
-- 入库后排队 `storage_parse_pdf`；文档处理完成后可由 workflow 排队 `rag_embed_chunks`。
+- 入库后排队 `storage_parse_pdf`；同步文档处理完成后 storage importer 排队 `rag_embed_chunks`，由 workflow/job runner 调用 RAG indexing 并标记 job 状态。
 - vector/index status 持久化接口。

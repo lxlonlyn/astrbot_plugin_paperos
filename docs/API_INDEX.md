@@ -37,16 +37,17 @@
 
 - `paperos.workflows.paper_discovery.PaperDiscoveryWorkflow.discover_and_index(query, need_fulltext=True, auto_import=True, search_context=None)`
   - 用户级 discovery pipeline。
-  - 第一阶段同步执行 search 和 storage import。
+  - 同步执行 search、storage import、storage PDF document processing；当构造时注入 `rag_index_service` 且 import item 带 `parser_run_id` 时，继续执行 RAG embedding/vector indexing。
   - 可选透传 searcher 的 `SearchContext`，但 workflow/searcher 不反向调用 RAG 或 storage 生成它。
-  - 后续 storage document processing / RAG embedding 通过 `paper_jobs` 表表达。
-  - 返回 `DiscoveryPipelineResult`，包含 search result、import summary、`storage_parse_job_ids`、`rag_job_ids` 和可选 `import_error`。
+  - storage document processing / RAG embedding 仍通过 `paper_jobs` 表表达，不绕过 job 状态。
+  - 返回 `DiscoveryPipelineResult`，包含 search result、import summary、`storage_parse_job_ids`、`rag_job_ids`、`rag_index_attempts` 和可选 `import_error`。
+  - RAG indexing 失败不会回滚 search/storage；workflow 会把 `rag_embed_chunks` job 和 `index_status` 标记 failed，并在结果摘要中暴露失败。
 
 ## AstrBot Commands
 
 - `/paperos search <query>`
   - 调用 `PaperDiscoveryWorkflow.discover_and_index(...)`。
-  - storage 启用时自动导入同一次搜索结果，归档 verified PDF，并入队后续文档处理。
+  - storage 启用时自动导入同一次搜索结果，归档 verified PDF，同步尝试 storage document processing，并在有 `parser_run_id` 时执行 RAG indexing 后处理。
   - 发送文件时优先使用 storage object 路径。
 
 - `/paperos storage status`
@@ -63,7 +64,7 @@
 
 ## RAG
 
-RAG 从本地 storage 读取 paper/chunk/normalized document/index 数据，不调用 search。当前已实现 Phase 1 的 FTS-only retrieval 和 EvidencePack：`RagService.retrieve_local(...)` 从 `paper_chunks_fts` 返回 `RetrievedChunk[]`，`RagService.build_evidence_pack(...)` 补齐 citation metadata 和 neighbor chunks。Phase 2 基础 indexing service 也已存在：`RagIndexService` 通过 storage repository 读取 chunks 和过滤 missing/stale `chunk_embedding_status`，调用 AstrBot embedding provider，然后组织不含正文的 storage `VectorRecord[]`，通过 storage-owned `LocalVectorIndex` 写向量记录，并通过 repository 写 `chunk_embedding_status` 与 paper-level `index_status`；job claim/mark done/failed 仍应由 workflow/job runner 负责。Vector index 只保存可重建向量记录和 `chunk_id`，真实正文仍从 storage `paper_chunks` 读取。之后做 hybrid retrieval 和基于证据的回答/分析。PDF -> TEI -> chunks / FTS 属于 storage。RAG 只解析 embedding provider / retrieval / rerank / LLM answer 等运行期结果，不解析 PDF/GROBID 文档结构。若本地证据不足，RAG 返回 search expansion hints，由 workflow 显式调用 search。
+RAG 从本地 storage 读取 paper/chunk/normalized document/index 数据，不调用 search。当前已实现 Phase 1 的 FTS-only retrieval 和 EvidencePack：`RagService.retrieve_local(...)` 从 `paper_chunks_fts` 返回 `RetrievedChunk[]`，`RagService.build_evidence_pack(...)` 补齐 citation metadata 和 neighbor chunks。Phase 2 基础 indexing service 已接入 `/paperos search` command 的后处理：`RagIndexService` 通过 storage repository 读取 chunks 和过滤 missing/stale `chunk_embedding_status`，调用 AstrBot embedding provider，然后组织不含正文的 storage `VectorRecord[]`，通过 storage-owned `LocalVectorIndex` 写向量记录，并通过 repository 写 `chunk_embedding_status` 与 paper-level `index_status`；workflow 负责把对应 `rag_embed_chunks` job 标记 done/failed。Vector index 只保存可重建向量记录和 `chunk_id`，真实正文仍从 storage `paper_chunks` 读取。之后做 hybrid retrieval 和基于证据的回答/分析。PDF -> TEI -> chunks / FTS 属于 storage。RAG 只解析 embedding provider / retrieval / rerank / LLM answer 等运行期结果，不解析 PDF/GROBID 文档结构。若本地证据不足，RAG 返回 search expansion hints，由 workflow 显式调用 search。
 
 See:
 

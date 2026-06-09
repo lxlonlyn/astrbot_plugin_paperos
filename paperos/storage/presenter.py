@@ -120,6 +120,7 @@ class StoragePresenter:
             paper_id = getattr(item, "paper_id", None) or "-"
             object_id = getattr(item, "object_id", None) or "-"
             job_id = getattr(item, "job_id", None) or "-"
+            rag_job_id = getattr(item, "rag_job_id", None) or "-"
             parser_run_id = getattr(item, "parser_run_id", None) or "-"
             message = getattr(item, "message", None) or ""
             mode = "pdf" if getattr(item, "imported_pdf", False) else "metadata-only"
@@ -129,8 +130,32 @@ class StoragePresenter:
                 suffix += f"; message={message}"
             lines.append(
                 f"{idx}. {title}\n"
-                f"   paper_id={paper_id}; object_id={object_id}; job_id={job_id}; "
+                f"   paper_id={paper_id}; object_id={object_id}; "
+                f"job_id={job_id}; rag_job_id={rag_job_id}; "
                 f"mode={mode}; temp={cleanup}{suffix}"
+            )
+        return "\n".join(lines)
+
+    def format_rag_index_summary(self, attempts: list[Any]) -> str:
+        if not attempts:
+            return "RAG indexing：未执行"
+
+        ok_count = sum(1 for item in attempts if getattr(item, "ok", False))
+        failed = [item for item in attempts if not getattr(item, "ok", False)]
+        vector_count = sum(int(getattr(item, "vector_count", 0) or 0) for item in attempts)
+        lines = [
+            "RAG indexing：",
+            f"- parser_runs: {len(attempts)}",
+            f"- indexed: {ok_count}",
+            f"- failed: {len(failed)}",
+            f"- vectors: {vector_count}",
+        ]
+        for item in failed:
+            parser_run_id = getattr(item, "parser_run_id", None) or "-"
+            paper_id = getattr(item, "paper_id", None) or "-"
+            error = self._short(getattr(item, "error", "") or "vector indexing failed", 160)
+            lines.append(
+                f"- vector indexing failed: paper_id={paper_id}; parser_run_id={parser_run_id}; error={error}"
             )
         return "\n".join(lines)
 

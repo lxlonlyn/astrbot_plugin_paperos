@@ -19,7 +19,7 @@ Phase 1 最小实现已经可用：
 - `RagService.retrieve_evidence(query, filters=None)`：组合 retrieval 和 evidence builder。
 - `/paperos rag <query>`：返回 evidence chunks，不生成复杂答案。
 
-Phase 2 基础 indexing service 已经可用，但尚未接命令或 job runner：
+Phase 2 基础 indexing service 已经可用，并已接入 `/paperos search` command 的后处理；独立后台 job runner 尚未实现：
 
 - `resolve_embedding_provider(context, provider_id="")`：使用 AstrBot context 的 `get_all_embedding_providers()`。
 - 如果配置了 `rag.embedding_provider_id`，按 provider id/name 匹配。
@@ -32,6 +32,7 @@ Phase 2 基础 indexing service 已经可用，但尚未接命令或 job runner�
 - indexing service 组织 storage `VectorRecord`，不包含 chunk 正文 text。
 - indexing service 通过 `LocalVectorIndex.upsert_vectors(...)` 写向量，通过 repository 写 `chunk_embedding_status` 和 `index_status`。
 - RAG 正文、metadata、citation 仍必须从 storage 读取；vector index 不是 source of truth。
+- `/paperos search` command 中，`PaperDiscoveryWorkflow` 会在 storage document processing 返回 `parser_run_id` 后调用 `RagIndexService.index_parser_run(...)`，并负责把对应 `rag_embed_chunks` job 标记 done/failed。
 
 当前 `/paperos rag <query>` 不调用 embedding provider，不做 vector retrieval，不调用 searcher，不调用 LLM。
 
@@ -121,7 +122,8 @@ Phase 2: embedding + vector index.
 
 - `RagIndexService` 已实现基础索引能力。
 - RAG indexing 已迁移到 storage-owned vector interface。
-- job claim / mark done / mark failed 仍由未来 workflow/job runner 负责。
+- `/paperos search` command 后处理已通过 `PaperDiscoveryWorkflow` 调用 `index_parser_run(parser_run_id)`。
+- job claim / mark done / mark failed 由 workflow/job runner 负责；当前 command workflow 会标记本次 import 对应的 `rag_embed_chunks` job，独立后台 worker 尚未实现。
 - load parser_run/paper chunks。
 - filter missing/stale chunk embedding status。
 - resolve AstrBot embedding provider。

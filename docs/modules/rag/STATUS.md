@@ -14,13 +14,14 @@
 
 `/paperos rag <query>` 会读取 storage 已生成的 `paper_chunks_fts`，返回 evidence chunks。它不生成复杂答案，不调用 searcher，不调用 embedding provider。
 
-已新增 Phase 2 的基础索引服务，但尚未接入命令或 job runner：
+已新增 Phase 2 的基础索引服务，并已接入 `/paperos search` command 的后处理；独立后台 job runner 尚未实现：
 
 - `resolve_embedding_provider(context, provider_id="")`：只解析 AstrBot 已配置的 embedding provider。
 - `RagIndexService.index_parser_run(parser_run_id)`：读取 storage chunks，调用 AstrBot embedding provider，通过 storage-owned `LocalVectorIndex` 写 `VectorRecord`，并更新 chunk-level `chunk_embedding_status` 与 paper-level `index_status`。
 - `RagIndexService.index_paper(paper_id)`。
 - `RagIndexService.index_pending_job(job)`：只处理明确 job payload，不 claim、不 mark done/failed。
 - RAG 不实例化 LanceDB，不接收 `vector_index_dir`，不决定 vector index 如何建表或存储。
+- `/paperos search` 中的 `PaperDiscoveryWorkflow` 会在 import summary 有 `parser_run_id` 时调用 `index_parser_run(parser_run_id)`；成功后标记对应 `rag_embed_chunks` job done，失败时标记 job failed 和 `index_status=failed`，不回滚 search/storage。
 
 当前 docs 固定边界：RAG 不拥有 PDF parser、GROBID、chunker 或 PDF -> text。Storage 负责 document processing 和 chunks；RAG 负责 FTS/vector retrieval、embedding/vector index、EvidencePack、answer generation 和 search expansion hints。
 
@@ -57,8 +58,9 @@
 - batch embedding API：已完成。
 - write storage-owned vector index：已完成，通过 `LocalVectorIndex.upsert_vectors(...)`。
 - update `index_status`：已完成。
+- `/paperos search` command 后处理：已完成。
 - `RagIndexJobRunner`：未实现。
-- claim `rag_embed_chunks` job：未实现，后续由 workflow/job runner 负责。
+- claim 任意 pending `rag_embed_chunks` job 的后台 worker：未实现，后续由 workflow/job runner 负责。
 - chunk-level embedding status：已完成，通过 storage repository `upsert_chunk_embedding_status(...)`。
 - `RagVectorService` / `VectorRetriever` / hybrid retrieval：未实现。
 

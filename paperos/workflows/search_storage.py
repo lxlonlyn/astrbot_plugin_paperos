@@ -70,6 +70,7 @@ class SearchStorageImportResult:
     object_storage_key: str | None = None
     object_path: str | None = None
     job_id: str | None = None
+    rag_job_id: str | None = None
     parser_run_id: str | None = None
     imported_pdf: bool = False
     metadata_only: bool = True
@@ -88,6 +89,7 @@ class SearchStorageImportResult:
             object_storage_key=result.object_storage_key,
             object_path=result.object_path,
             job_id=result.job_id,
+            rag_job_id=result.rag_job_id,
             parser_run_id=result.parser_run_id,
             imported_pdf=result.imported_pdf,
             metadata_only=result.metadata_only,

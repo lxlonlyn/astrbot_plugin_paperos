@@ -48,9 +48,9 @@ Expected major parts:
 ## Jobs
 
 - `storage_parse_pdf`: storage worker parses a PDF object into document rows, chunks and FTS.
-- `rag_embed_chunks`: RAG worker embeds chunks and updates vector/index status.
+- `rag_embed_chunks`: RAG worker or `/paperos search` post-processing embeds chunks and updates vector/index status.
 
-Storage enqueues `storage_parse_pdf` after importing a verified PDF and immediately attempts one synchronous document-processing pass in the `/paperos search` workflow. On success, it marks `storage_parse_pdf` done and enqueues `rag_embed_chunks`. On GROBID or parser failure, it keeps the imported paper/PDF, marks `storage_parse_pdf` failed, and returns a clear import summary message.
+Storage enqueues `storage_parse_pdf` after importing a verified PDF and immediately attempts one synchronous document-processing pass in the `/paperos search` workflow. On success, it marks `storage_parse_pdf` done and enqueues `rag_embed_chunks`. The workflow may then call RAG indexing for the returned `parser_run_id` and mark that `rag_embed_chunks` job done/failed. On GROBID or parser failure, it keeps the imported paper/PDF, marks `storage_parse_pdf` failed, and returns a clear import summary message.
 
 ## Non-Goals
 
@@ -60,5 +60,5 @@ Storage must not:
 - download PDF URLs;
 - call LLM providers;
 - call embedding providers;
-- write vector DB data;
+- decide embedding models, retrieval policy, or answer generation;
 - generate answers.

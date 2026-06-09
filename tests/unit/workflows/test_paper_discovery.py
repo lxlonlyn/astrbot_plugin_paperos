@@ -7,7 +7,11 @@ from paperos.storage.config import StorageConfig
 from paperos.storage.objects import LocalFileObjectStore
 from paperos.storage.sqlite.repository import SQLitePaperRepository
 from paperos.workflows.paper_discovery import PaperDiscoveryWorkflow
-from paperos.workflows.search_storage import SearchStorageImportWorkflow
+from paperos.workflows.search_storage import (
+    SearchStorageImportResult,
+    SearchStorageImportSummary,
+    SearchStorageImportWorkflow,
+)
 
 
 class FakeSearchService:
@@ -25,6 +29,51 @@ class FakeSearchService:
     ) -> PaperSearchResult:
         self.calls.append((raw_query, event, need_fulltext, context))
         return self.result
+
+
+class FakeImportWorkflow:
+    def __init__(self, summary: SearchStorageImportSummary, repository):
+        self.summary = summary
+        self.repository = repository
+        self.calls = []
+
+    async def import_search_result(self, result, **kwargs):
+        self.calls.append((result, kwargs))
+        return self.summary
+
+
+class FakeRagResult:
+    vector_count = 3
+    index_name = "chunk_embeddings"
+    profile = "fake:dim3"
+
+
+class FakeRagIndexService:
+    def __init__(self, *, fail: bool = False):
+        self.fail = fail
+        self.calls = []
+
+    async def index_parser_run(self, parser_run_id: str):
+        self.calls.append(parser_run_id)
+        if self.fail:
+            raise RuntimeError("embedding provider unavailable")
+        return FakeRagResult()
+
+
+class FakeRepository:
+    def __init__(self):
+        self.done_jobs = []
+        self.failed_jobs = []
+        self.index_status = []
+
+    async def mark_job_done(self, job_id: str) -> None:
+        self.done_jobs.append(job_id)
+
+    async def mark_job_failed_final(self, job_id: str, error_message: str) -> None:
+        self.failed_jobs.append((job_id, error_message))
+
+    async def update_index_status(self, **kwargs) -> None:
+        self.index_status.append(kwargs)
 
 
 def test_discover_and_index_searches_imports_and_reports_parse_jobs(tmp_path):
@@ -89,5 +138,94 @@ def test_discover_and_index_searches_imports_and_reports_parse_jobs(tmp_path):
         assert job["job_type"] == "storage_parse_pdf"
 
         await repo.aclose()
+
+    asyncio.run(run())
+
+
+def test_discover_and_index_runs_rag_indexing_for_parser_runs():
+    async def run():
+        candidate = PaperCandidate(title="Indexed Paper", source="test")
+        search_result = PaperSearchResult(
+            status="selected",
+            candidates=[candidate],
+            selected=[candidate],
+        )
+        summary = SearchStorageImportSummary(
+            [
+                SearchStorageImportResult(
+                    paper_id="p_1",
+                    title="Indexed Paper",
+                    source="test",
+                    job_id="job_parse",
+                    rag_job_id="job_rag",
+                    parser_run_id="parser_1",
+                    imported_pdf=True,
+                    metadata_only=False,
+                )
+            ]
+        )
+        repo = FakeRepository()
+        rag = FakeRagIndexService()
+        workflow = PaperDiscoveryWorkflow(
+            search_service=FakeSearchService(search_result),
+            search_storage=FakeImportWorkflow(summary, repo),
+            rag_index_service=rag,
+        )
+
+        result = await workflow.discover_and_index("indexed paper")
+
+        assert rag.calls == ["parser_1"]
+        assert repo.done_jobs == ["job_rag"]
+        assert result.rag_job_ids == ["job_rag"]
+        assert result.rag_index_failed_count == 0
+        assert result.rag_indexed_vector_count == 3
+
+    asyncio.run(run())
+
+
+def test_discover_and_index_keeps_import_when_rag_indexing_fails():
+    async def run():
+        candidate = PaperCandidate(title="Indexed Paper", source="test")
+        search_result = PaperSearchResult(
+            status="selected",
+            candidates=[candidate],
+            selected=[candidate],
+        )
+        summary = SearchStorageImportSummary(
+            [
+                SearchStorageImportResult(
+                    paper_id="p_1",
+                    title="Indexed Paper",
+                    source="test",
+                    job_id="job_parse",
+                    rag_job_id="job_rag",
+                    parser_run_id="parser_1",
+                    imported_pdf=True,
+                    metadata_only=False,
+                )
+            ]
+        )
+        repo = FakeRepository()
+        workflow = PaperDiscoveryWorkflow(
+            search_service=FakeSearchService(search_result),
+            search_storage=FakeImportWorkflow(summary, repo),
+            rag_index_service=FakeRagIndexService(fail=True),
+        )
+
+        result = await workflow.discover_and_index("indexed paper")
+
+        assert result.imported_count == 1
+        assert result.pdf_count == 1
+        assert result.rag_index_failed_count == 1
+        assert repo.failed_jobs == [("job_rag", "embedding provider unavailable")]
+        assert repo.index_status == [
+            {
+                "paper_id": "p_1",
+                "index_name": "chunk_embeddings",
+                "status": "failed",
+                "profile": None,
+                "message": "embedding provider unavailable",
+            }
+        ]
 
     asyncio.run(run())
