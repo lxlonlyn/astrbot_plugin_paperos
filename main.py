@@ -22,6 +22,11 @@ class PaperOSPlugin(Star):
     async def initialize(self):
         self.os.plugin_name = getattr(self, "name", self.os.plugin_name)
         await self.os.initialize()
+        logger.info("[PaperOS] plugin initilized")
+
+    async def terminate(self):
+        await self.os.close()
+        logger.info("[PaperOS] plugin terminated")
 
     # ================= PaperOS 指令开始 =================
     @filter.command_group("paperos")
@@ -98,6 +103,3 @@ class PaperOSPlugin(Star):
             ])
         return event.plain_result(response.text)
 
-    async def terminate(self):
-        await self.os.close()
-        logger.info("[PaperOS] plugin terminated")
