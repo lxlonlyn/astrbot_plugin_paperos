@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-已实现 Phase 1 的最小 FTS-only RAG，并已加入 vector/hybrid retrieval baseline。当前代码包含：
+已实现 FTS baseline，并已加入 vector/hybrid retrieval baseline。当前代码包含：
 
 - `paperos/rag/models.py`
 - `paperos/rag/retrieval.py`
@@ -27,9 +27,9 @@
 
 这里的“解析”只允许指 provider/result parsing，例如 embedding provider response、retrieval result、rerank result、LLM answer JSON 或 search expansion hints。PDF/GROBID/TEI/chunking 的 document parsing 属于 storage。
 
-## Phase 1: FTS-only RAG
+## Phase 1: FTS Baseline
 
-当前已实现基础 FTS-only，不上 embedding/vector。
+当前已实现基础 FTS retrieval。它是不依赖 embedding provider 的稳定 fallback，不再代表 `/paperos rag` 的唯一检索路径。
 
 原因：
 
@@ -66,7 +66,7 @@
 - chunk-level embedding status：已完成，通过 storage repository `upsert_chunk_embedding_status(...)`。
 - `RagVectorService`：未实现；当前只有轻量 `VectorRetriever` / `HybridRetriever` baseline。
 
-## Phase 3: Hybrid Retrieval
+## Phase 3: Hybrid Retrieval Hardening
 
 - FTS retriever。
 - vector retriever。

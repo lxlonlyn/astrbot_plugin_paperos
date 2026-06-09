@@ -22,13 +22,30 @@ class PaperOSPlugin(Star):
     async def initialize(self):
         self.os.plugin_name = getattr(self, "name", self.os.plugin_name)
         await self.os.initialize()
-        logger.info("[PaperOS] plugin initilized")
+        logger.info("[PaperOS] plugin initialized")
 
     async def terminate(self):
         await self.os.close()
         logger.info("[PaperOS] plugin terminated")
 
-    # ================= PaperOS 指令开始 =================
+    # ================= helper func =================
+    def _extract_after_command(self, raw: str, command_candidates: list[str]) -> str:
+        raw_l = raw.lower()
+        for cmd in command_candidates:
+            cmd_l = cmd.lower()
+            if raw_l.startswith(cmd_l):
+                return raw[len(cmd):].strip()
+        return raw.strip()
+
+    def _to_astrbot_result(self, event: AstrMessageEvent, response: PaperOSCommandResponse):
+        if response.file_path:
+            return event.chain_result([
+                Comp.Plain(response.text),
+                Comp.File(file=response.file_path, name=response.file_name or "paper.pdf"),
+            ])
+        return event.plain_result(response.text)
+    
+    # ================= PaperOS commands =================
     @filter.command_group("paperos")
     def paperos():
         """PaperOS 指令组。"""
@@ -57,7 +74,7 @@ class PaperOSPlugin(Star):
     # ================= rag =================
     @paperos.command("rag")
     async def rag_local(self, event: AstrMessageEvent):
-        """从本地 chunks 做 FTS-only RAG evidence 检索。"""
+        """从本地 chunks 做 RAG evidence 检索，优先 hybrid，失败时回退 FTS。"""
         query_text = self._extract_after_command(
             event.message_str.strip(),
             command_candidates=["/paperos rag", "paperos rag"],
@@ -86,20 +103,4 @@ class PaperOSPlugin(Star):
         )
         response = await self.os.storage_info(query_text)
         yield self._to_astrbot_result(event, response)
-
-    def _extract_after_command(self, raw: str, command_candidates: list[str]) -> str:
-        raw_l = raw.lower()
-        for cmd in command_candidates:
-            cmd_l = cmd.lower()
-            if raw_l.startswith(cmd_l):
-                return raw[len(cmd):].strip()
-        return raw.strip()
-
-    def _to_astrbot_result(self, event: AstrMessageEvent, response: PaperOSCommandResponse):
-        if response.file_path:
-            return event.chain_result([
-                Comp.Plain(response.text),
-                Comp.File(file=response.file_path, name=response.file_name or "paper.pdf"),
-            ])
-        return event.plain_result(response.text)
 

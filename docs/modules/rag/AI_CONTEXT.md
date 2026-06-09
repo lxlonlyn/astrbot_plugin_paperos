@@ -12,7 +12,7 @@ RAG 中的“解析”只指 provider/result parsing：解析 embedding provider
 
 ## 当前已实现
 
-Phase 1 最小实现已经可用：
+FTS baseline 已经可用：
 
 - `RagService.retrieve_local(query, filters=None)`：从 storage FTS 读取 chunk 命中。
 - `RagService.build_evidence_pack(query, chunks)`：补齐 paper metadata、section/page 和 neighbor chunks。
@@ -115,13 +115,13 @@ paperos/rag/
 
 ## Phases
 
-Phase 1: FTS-only RAG.
+Phase 1: FTS baseline.
 
 - `RagService.retrieve_local(query, filters=None)`。
 - 调用 storage repository 的 `search_chunks_fts(...)`。
 - 返回 `RetrievedChunk[]`。
 - `EvidenceBuilder` 根据 chunk ids 拉取 paper title、section、page、text。
-- `/paperos rag <query>` 返回 evidence chunks。
+- `/paperos rag <query>` 可返回 FTS evidence chunks；当注入 vector index 和 AstrBot context 时，当前实现会优先尝试 hybrid retrieval。
 - 不依赖 embedding API，不写 vector index。
 - `AnswerBuilder` / LLM answer 留到后续 evidence-based generation。
 
@@ -139,9 +139,9 @@ Phase 2: embedding + vector index.
 - write through `LocalVectorIndex.upsert_vectors(...)`。
 - update index status。
 - update chunk-level `chunk_embedding_status`。
-- `RagVectorService` / `VectorRetriever` / hybrid retrieval 尚未实现；不要把它们塞进 `RagIndexService`。
+- `VectorRetriever` / `HybridRetriever` 已实现 baseline；不要把 retrieval 逻辑塞进 `RagIndexService`。
 
-Phase 3: hybrid retrieval.
+Phase 3: hybrid retrieval hardening.
 
 - `FTSRetriever`。
 - `VectorRetriever`：已实现 baseline。
