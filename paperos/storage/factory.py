@@ -52,6 +52,6 @@ def _create_vector_index(storage_cfg: StorageConfig, paths: PaperOSPaths) -> Loc
     if storage_cfg.vector_backend != "lancedb":
         raise ValueError(f"Unsupported storage.vector_backend: {storage_cfg.vector_backend}")
     return LanceDBVectorIndex(
-        paths.index_dir / "lancedb",
+        paths.vector_index_dir,
         table_name=storage_cfg.vector_table_name,
     )

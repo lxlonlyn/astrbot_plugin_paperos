@@ -47,7 +47,7 @@ class PaperOSPaths:
             tmp_dir=root / "tmp",
             index_dir=index_dir,
             fts_index_dir=index_dir / "fts",
-            vector_index_dir=index_dir / "vector",
+            vector_index_dir=index_dir / "lancedb",
         )
 
     def ensure_dirs(self) -> None:
@@ -56,5 +56,3 @@ class PaperOSPaths:
         self.object_dir.mkdir(parents=True, exist_ok=True)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         self.index_dir.mkdir(parents=True, exist_ok=True)
-        self.fts_index_dir.mkdir(parents=True, exist_ok=True)
-        self.vector_index_dir.mkdir(parents=True, exist_ok=True)

@@ -17,8 +17,7 @@ AstrBot/
           json/
         tmp/
         indexes/
-          fts/
-          vector/
+          lancedb/      # created when vector index is written
 ```
 
 不要把数据库和对象文件放在插件源码目录下。源码目录可能会被 git pull、重装、容器重建影响。
@@ -117,6 +116,6 @@ AstrBot/
 
 GROBID 或本地 parser 配置属于 storage 文档处理配置。`grobid_base_url` 应指向本机或服务器中的 GROBID REST 服务；如果连接失败，storage 文档处理应报错提示服务地址、启动状态或超时配置问题。API embedding provider 属于 RAG 配置，不属于 storage 配置。storage 只保存 embedding/vector/index 的持久化结果或状态。
 
-本地向量索引后续默认放在 `root_dir/indexes/vector/`。SQLite 仍然是 paper、object、chunk、job、index status 的 source of truth；向量库只是可重建索引文件，不应放在插件源码目录下。
+SQLite FTS 使用数据库内的 `paper_chunks_fts` 虚表，不需要单独的 `indexes/fts/` 目录。本地 LanceDB 向量索引默认放在 `root_dir/indexes/lancedb/`，并在首次写入向量索引时创建。SQLite 仍然是 paper、object、chunk、job、index status 的 source of truth；向量库只是可重建索引文件，不应放在插件源码目录下。
 
 后续如果需要多人协作、远程同步、跨设备写入，再考虑 PostgreSQL / S3 / Qdrant / Neo4j 等外部服务。

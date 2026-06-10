@@ -411,7 +411,7 @@ def test_chunk_embedding_status_tracks_missing_and_current_hash(tmp_path):
     asyncio.run(run())
 
 
-def test_paths_create_plugin_data_index_subdirectories(tmp_path):
+def test_paths_create_only_used_index_directories(tmp_path):
     cfg = StorageConfig(root_dir=str(tmp_path / "paperos_data"))
     paths = PaperOSPaths.from_config(cfg, plugin_name="astrbot_plugin_paperos")
     paths.ensure_dirs()
@@ -420,9 +420,10 @@ def test_paths_create_plugin_data_index_subdirectories(tmp_path):
     assert paths.object_dir == paths.root_dir / "objects"
     assert paths.index_dir == paths.root_dir / "indexes"
     assert paths.fts_index_dir == paths.root_dir / "indexes" / "fts"
-    assert paths.vector_index_dir == paths.root_dir / "indexes" / "vector"
-    assert paths.fts_index_dir.is_dir()
-    assert paths.vector_index_dir.is_dir()
+    assert paths.vector_index_dir == paths.root_dir / "indexes" / "lancedb"
+    assert paths.index_dir.is_dir()
+    assert not paths.fts_index_dir.exists()
+    assert not (paths.root_dir / "indexes" / "vector").exists()
 
 
 def test_storage_diagnostics_status_and_info(tmp_path):
