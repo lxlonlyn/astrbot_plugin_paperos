@@ -38,6 +38,11 @@ Workflow 不拥有：
   - RAG indexing 成功后标记 `rag_embed_chunks` job done；失败时标记 job failed 和 `index_status=failed`，但不回滚 search/storage。
   - `/paperos search` command 使用这个 pipeline；`paperos_search_paper` LLM tool 仍只返回 search result，不做隐式入库/index。
 
+- `UploadProbeWorkflow`
+  - 只服务 `/paperos upload` 的上传链路探针。
+  - 只组合 storage `DocumentProcessor` / configured `GrobidClient` 和 TEI header reader。
+  - 不调用 search、storage importer、SQLite/object store、RAG、LLM、embedding provider，不 enqueue job。
+
 ## 依赖方向
 
 ```text
@@ -60,3 +65,4 @@ rag     -X-> workflows
 - 不要新增 `/paperos index` 指令组来表达 search 后处理。
 - 不要把 embedding provider 调用放进 searcher 或 storage。
 - 不要让 `SearchStorageImportWorkflow` 代表完整 pipeline；它只做 search result -> storage import。
+- 不要把 `UploadProbeWorkflow` 扩展成正式 PDF 导入、metadata completion、paper matching 或 RAG indexing pipeline。

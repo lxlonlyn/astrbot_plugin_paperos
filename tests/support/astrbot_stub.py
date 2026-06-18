@@ -120,6 +120,7 @@ def install_astrbot_stub() -> None:
     core_mod = types.ModuleType("astrbot.core")
     utils_mod = types.ModuleType("astrbot.core.utils")
     path_mod = types.ModuleType("astrbot.core.utils.astrbot_path")
+    session_waiter_mod = types.ModuleType("astrbot.core.utils.session_waiter")
 
     api_mod.AstrBotConfig = AstrBotConfig
     api_mod.logger = logger
@@ -131,6 +132,27 @@ def install_astrbot_stub() -> None:
     comp_mod.File = File
     path_mod.get_astrbot_data_path = _get_astrbot_data_path
 
+    class SessionController:
+        def stop(self, error=None):
+            self.error = error
+
+        def keep(self, timeout=0, reset_timeout=False):
+            self.timeout = timeout
+            self.reset_timeout = reset_timeout
+
+    def session_waiter(timeout: int = 30, record_history_chains: bool = False):
+        def decorator(func):
+            async def wrapper(event, *args, **kwargs):
+                return None
+
+            wrapper.__wrapped__ = func
+            return wrapper
+
+        return decorator
+
+    session_waiter_mod.SessionController = SessionController
+    session_waiter_mod.session_waiter = session_waiter
+
     sys.modules["astrbot"] = astrbot_mod
     sys.modules["astrbot.api"] = api_mod
     sys.modules["astrbot.api.event"] = event_mod
@@ -139,6 +161,7 @@ def install_astrbot_stub() -> None:
     sys.modules["astrbot.core"] = core_mod
     sys.modules["astrbot.core.utils"] = utils_mod
     sys.modules["astrbot.core.utils.astrbot_path"] = path_mod
+    sys.modules["astrbot.core.utils.session_waiter"] = session_waiter_mod
 
     if find_spec("pypdf") is None:
         _install_pypdf_stub()

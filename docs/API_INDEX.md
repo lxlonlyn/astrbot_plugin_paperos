@@ -52,6 +52,11 @@ PaperOS 的稳定核心模块只有 `search`、`storage`、`rag`。复杂用户�
   - 返回 `DiscoveryPipelineResult`，包含 search result、import summary、`storage_parse_job_ids`、`rag_job_ids`、`rag_index_attempts` 和可选 `import_error`。
   - RAG indexing 失败不会回滚 search/storage；workflow 会把 `rag_embed_chunks` job 和 `index_status` 标记 failed，并在结果摘要中暴露失败。
 
+- `paperos.workflows.upload_probe.UploadProbeWorkflow.run(pdf_path)`
+  - 上传链路探针，只验证 AstrBot 本地文件接收和已配置的 storage GROBID 通路。
+  - 调用 storage `DocumentProcessor` / configured `GrobidClient`，读取 TEI/normalized document/header metadata 后返回摘要。
+  - 不调用 search、crawler、LLM、embedding provider、storage importer、SQLite、object store、RAG index service，也不 enqueue job。
+
 ## AstrBot Commands
 
 - `/paperos search <query>`
@@ -71,6 +76,11 @@ PaperOS 的稳定核心模块只有 `search`、`storage`、`rag`。复杂用户�
   - 只读取 storage 已生成的 FTS/vector index/`paper_chunks` / paper metadata。
   - 返回 evidence chunks、section/page/chunk id 和邻近 chunk 摘要。
   - 可调用 AstrBot embedding provider 做 query embedding；不调用 searcher，不生成复杂答案。
+
+- `/paperos upload`
+  - 等待同一会话下一条消息中的本地 PDF 文件。
+  - 将 PDF 复制到 `storage.paths.tmp_dir / "uploads"`，然后调用 `PaperOSApp.upload_probe(...)`。
+  - 这是 upload/GROBID probe，不是正式 PDF 导入 pipeline；不入库、不归档 object、不建索引。
 
 ## RAG
 

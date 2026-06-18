@@ -16,9 +16,11 @@ from .search.presenter import PaperSearchPresenter
 from .search.service import PaperSearchService
 from .storage.diagnostics import StorageDiagnostics
 from .storage.factory import PaperOSStorageContext, create_storage_context
+from .storage.paths import PaperOSPaths
 from .storage.presenter import StoragePresenter
 from .workflows.paper_discovery import PaperDiscoveryWorkflow
 from .workflows.search_storage import SearchStorageImportSummary, SearchStorageImportWorkflow
+from .workflows.upload_probe import UploadProbeWorkflow, format_upload_probe_result
 
 
 @dataclass(frozen=True)
@@ -122,6 +124,22 @@ class PaperOSApp:
         diagnostics = self._build_storage_diagnostics(storage)
         info = diagnostics.paper_info(query_text)
         return PaperOSCommandResponse(self.storage_presenter.format_info(info))
+
+    async def upload_tmp_dir(self) -> Path | None:
+        paths = self._upload_probe_paths()
+        if paths is None:
+            return None
+        return paths.tmp_dir
+
+    async def upload_probe(self, pdf_path: Path) -> PaperOSCommandResponse:
+        if not self.cfg.storage.enabled:
+            return PaperOSCommandResponse(
+                "PaperOS Upload Probe\n- ERROR storage 未启用，无法读取 GROBID 配置。"
+            )
+
+        workflow = UploadProbeWorkflow(storage_cfg=self.cfg.storage)
+        result = await workflow.run(pdf_path)
+        return PaperOSCommandResponse(format_upload_probe_result(result))
 
     def config_text(self) -> str:
         return self.search_presenter.format_config()
@@ -236,6 +254,13 @@ class PaperOSApp:
                 return str(candidate.resolve())
             logger.warning("[PaperOS] skip missing file path before sending: %s", path)
         return None
+
+    def _upload_probe_paths(self) -> PaperOSPaths | None:
+        if not self.cfg.storage.enabled:
+            return None
+        paths = PaperOSPaths.from_config(self.cfg.storage, plugin_name=self.plugin_name)
+        paths.ensure_dirs()
+        return paths
 
     async def _ensure_storage_context(self) -> PaperOSStorageContext | None:
         if not self.cfg.storage.enabled:

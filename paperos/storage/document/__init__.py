@@ -3,6 +3,7 @@ from .grobid_client import GrobidClient, GrobidServiceError
 from .grobid_models import DocumentAsset, DocumentBlock, DocumentReference, DocumentSection, NormalizedDocument
 from .normalizer import DocumentNormalizer
 from .processor import DocumentProcessor
+from .tei_header import TEIHeaderMetadata, parse_tei_header_metadata
 from .tei_parser import TEIParser
 
 __all__ = [
@@ -17,4 +18,6 @@ __all__ = [
     "DocumentNormalizer",
     "DocumentChunker",
     "DocumentProcessor",
+    "TEIHeaderMetadata",
+    "parse_tei_header_metadata",
 ]
